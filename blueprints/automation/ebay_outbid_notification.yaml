@@ -1,0 +1,55 @@
+blueprint:
+  name: eBay - Notify When Outbid
+  description: Send a notification when you've been outbid on an eBay auction
+  domain: automation
+  source_url: https://github.com/planetbuilders/ebay-integration/blueprints/automation/ebay_outbid_notification.yaml
+  input:
+    ebay_account:
+      name: eBay Account
+      description: Which eBay account to monitor (leave blank for all accounts)
+      default: ""
+      selector:
+        text:
+    notify_service:
+      name: Notification Service
+      description: The notification service to use (e.g., notify.mobile_app_iphone)
+      selector:
+        target:
+    include_price:
+      name: Include Current Price
+      description: Include the current price in the notification
+      default: true
+      selector:
+        boolean:
+    include_image:
+      name: Include Item Image
+      description: Include the item image in the notification (if supported by your notification service)
+      default: true
+      selector:
+        boolean:
+
+trigger:
+  - platform: event
+    event_type: ebay_outbid
+
+condition:
+  - condition: template
+    value_template: >-
+      {{ !ebay_account or trigger.event.data.account == ebay_account }}
+
+action:
+  - service: !input notify_service
+    data:
+      title: "🔴 You've been outbid!"
+      message: >-
+        {{ trigger.event.data.item.title }}
+        {% if include_price %}
+        Current price: {{ trigger.event.data.item.current_price.value }} {{ trigger.event.data.item.current_price.currency }}
+        {% endif %}
+        Time remaining: {{ trigger.event.data.item.time_remaining }}
+      data:
+        url: "{{ trigger.event.data.item.item_url }}"
+        tag: "ebay_outbid_{{ trigger.event.data.item.item_id }}"
+        {% if include_image %}
+        image: "{{ trigger.event.data.item.image_url }}"
+        {% endif %}

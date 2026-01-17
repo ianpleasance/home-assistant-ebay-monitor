@@ -1,0 +1,68 @@
+blueprint:
+  name: eBay - Auction Won/Lost Notification
+  description: Send notifications when you win or lose an auction
+  domain: automation
+  source_url: https://github.com/planetbuilders/ebay-integration/blueprints/automation/ebay_auction_result.yaml
+  input:
+    ebay_account:
+      name: eBay Account
+      description: Which eBay account to monitor (leave blank for all accounts)
+      default: ""
+      selector:
+        text:
+    notify_service:
+      name: Notification Service
+      description: The notification service to use
+      selector:
+        target:
+    notify_on_win:
+      name: Notify on Win
+      description: Send notification when you win an auction
+      default: true
+      selector:
+        boolean:
+    notify_on_loss:
+      name: Notify on Loss
+      description: Send notification when you lose an auction
+      default: true
+      selector:
+        boolean:
+
+trigger:
+  - platform: event
+    event_type: ebay_auction_won
+    id: won
+  - platform: event
+    event_type: ebay_auction_lost
+    id: lost
+
+condition:
+  - condition: template
+    value_template: >-
+      {{ !ebay_account or trigger.event.data.account == ebay_account }}
+  - condition: template
+    value_template: >-
+      {% if trigger.id == 'won' %}
+        {{ notify_on_win }}
+      {% else %}
+        {{ notify_on_loss }}
+      {% endif %}
+
+action:
+  - service: !input notify_service
+    data:
+      title: >-
+        {% if trigger.id == 'won' %}
+        🎉 Congratulations! You won!
+        {% else %}
+        😔 Auction ended - You didn't win
+        {% endif %}
+      message: >-
+        {{ trigger.event.data.item.title }}
+        
+        Final price: {{ trigger.event.data.item.current_price.value }} {{ trigger.event.data.item.current_price.currency }}
+        Seller: {{ trigger.event.data.item.seller_username }}
+      data:
+        url: "{{ trigger.event.data.item.item_url }}"
+        tag: "ebay_result_{{ trigger.event.data.item.item_id }}"
+        image: "{{ trigger.event.data.item.image_url }}"

@@ -1,0 +1,81 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Aggiungi account eBay",
+        "description": "Inserisci un nome descrittivo per questo account eBay (ad esempio, 'Personale', 'Aziendale'). Puoi aggiungere più account se necessario.",
+        "data": {
+          "account_name": "Nome account"
+        }
+      },
+      "credentials": {
+        "title": "Credenziali sviluppatore eBay",
+        "description": "Inserisci le tue credenziali API eBay dal Programma Sviluppatori eBay.\n\nPer ottenere queste credenziali:\n1. Visita https://developer.ebay.com/\n2. Accedi e vai su 'Il mio account' → 'Chiavi applicazione'\n3. Crea una nuova applicazione (ambiente Produzione)\n4. Copia le credenziali qui sotto",
+        "data": {
+          "app_id": "ID applicazione (App ID / Client ID)",
+          "dev_id": "ID sviluppatore (Dev ID)",
+          "cert_id": "ID certificato (Cert ID / Client Secret)",
+          "token": "Token di autenticazione utente"
+        },
+        "data_description": {
+          "app_id": "Il tuo identificativo applicazione dal Portale Sviluppatori eBay",
+          "dev_id": "Il tuo identificativo account sviluppatore",
+          "cert_id": "Il tuo certificato applicazione/chiave segreta",
+          "token": "Token utente OAuth - generalo dalla sezione 'Token utente'"
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "Mancano una o più credenziali. Verifica che tutti i campi siano compilati.",
+      "cannot_connect": "Impossibile connettersi all'API eBay. Verifica che le tue credenziali siano corrette.",
+      "unknown": "Si è verificato un errore imprevisto. Riprova."
+    },
+    "abort": {
+      "already_configured": "Un account con questo nome è già configurato. Scegli un nome diverso."
+    }
+  },
+  "options": {
+    "step": {
+      "search_list": {
+        "title": "Gestisci ricerche salvate",
+        "description": "Account: {account_name}\nRicerche attuali: {search_count}\n\nGestisci le tue ricerche eBay salvate. Ogni ricerca creerà un sensore che si aggiorna automaticamente.",
+        "data": {
+          "action": "Azione"
+        }
+      },
+      "search_config": {
+        "title": "{action} ricerca",
+        "description": "Configura i parametri di ricerca. La ricerca verrà eseguita automaticamente all'intervallo specificato.",
+        "data": {
+          "search_query": "Parole chiave di ricerca",
+          "site": "Sito eBay (Paese)",
+          "category_id": "ID categoria (opzionale)",
+          "min_price": "Prezzo minimo (opzionale)",
+          "max_price": "Prezzo massimo (opzionale)",
+          "listing_type": "Tipo di inserzione",
+          "update_interval": "Intervallo di aggiornamento (minuti)"
+        },
+        "data_description": {
+          "search_query": "Cosa vuoi cercare (ad esempio, 'fotocamera vintage')",
+          "site": "Quale sito eBay nazionale cercare",
+          "category_id": "Numero categoria eBay per filtrare i risultati (trovalo negli URL eBay)",
+          "min_price": "Mostra solo articoli sopra questo prezzo",
+          "max_price": "Mostra solo articoli sotto questo prezzo",
+          "listing_type": "Filtra per asta, compralo subito, o mostra entrambi",
+          "update_interval": "Quanto spesso controllare nuove inserzioni (5-1440 minuti)"
+        }
+      },
+      "confirm_delete": {
+        "title": "Conferma eliminazione",
+        "description": "Sei sicuro di voler eliminare questa ricerca?\n\nRicerca: {search_query}\n\nQuesta azione non può essere annullata.",
+        "data": {
+          "confirm": "Sì, elimina questa ricerca"
+        }
+      }
+    },
+    "error": {
+      "invalid_query": "Le parole chiave di ricerca non possono essere vuote. Inserisci cosa vuoi cercare.",
+      "invalid_price_range": "Il prezzo massimo deve essere maggiore del prezzo minimo."
+    }
+  }
+}

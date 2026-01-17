@@ -1,0 +1,81 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Agregar cuenta de eBay",
+        "description": "Ingrese un nombre descriptivo para esta cuenta de eBay (por ejemplo, 'Personal', 'Negocios'). Puede agregar varias cuentas si es necesario.",
+        "data": {
+          "account_name": "Nombre de la cuenta"
+        }
+      },
+      "credentials": {
+        "title": "Credenciales de desarrollador de eBay",
+        "description": "Ingrese sus credenciales de API de eBay del Programa de Desarrolladores de eBay.\n\nPara obtener estas credenciales:\n1. Visite https://developer.ebay.com/\n2. Inicie sesión y vaya a 'Mi cuenta' → 'Claves de aplicación'\n3. Cree una nueva aplicación (entorno de Producción)\n4. Copie las credenciales a continuación",
+        "data": {
+          "app_id": "ID de aplicación (App ID / Client ID)",
+          "dev_id": "ID de desarrollador (Dev ID)",
+          "cert_id": "ID de certificado (Cert ID / Client Secret)",
+          "token": "Token de autenticación de usuario"
+        },
+        "data_description": {
+          "app_id": "Su identificador de aplicación del Portal de Desarrolladores de eBay",
+          "dev_id": "Su identificador de cuenta de desarrollador",
+          "cert_id": "Su certificado de aplicación/clave secreta",
+          "token": "Token de usuario OAuth - genérelo desde la sección 'Tokens de usuario'"
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "Faltan una o más credenciales. Por favor, verifique que todos los campos estén completos.",
+      "cannot_connect": "No se puede conectar a la API de eBay. Por favor, verifique que sus credenciales sean correctas.",
+      "unknown": "Ocurrió un error inesperado. Por favor, inténtelo de nuevo."
+    },
+    "abort": {
+      "already_configured": "Ya hay una cuenta configurada con este nombre. Por favor, elija un nombre diferente."
+    }
+  },
+  "options": {
+    "step": {
+      "search_list": {
+        "title": "Administrar búsquedas guardadas",
+        "description": "Cuenta: {account_name}\nBúsquedas actuales: {search_count}\n\nAdministre sus búsquedas guardadas de eBay. Cada búsqueda creará un sensor que se actualiza automáticamente.",
+        "data": {
+          "action": "Acción"
+        }
+      },
+      "search_config": {
+        "title": "{action} búsqueda",
+        "description": "Configure sus parámetros de búsqueda. La búsqueda se ejecutará automáticamente en el intervalo que especifique.",
+        "data": {
+          "search_query": "Palabras clave de búsqueda",
+          "site": "Sitio de eBay (País)",
+          "category_id": "ID de categoría (opcional)",
+          "min_price": "Precio mínimo (opcional)",
+          "max_price": "Precio máximo (opcional)",
+          "listing_type": "Tipo de anuncio",
+          "update_interval": "Intervalo de actualización (minutos)"
+        },
+        "data_description": {
+          "search_query": "Lo que desea buscar (por ejemplo, 'cámara vintage')",
+          "site": "Qué sitio de eBay del país buscar",
+          "category_id": "Número de categoría de eBay para filtrar resultados (encuéntrelo en las URLs de eBay)",
+          "min_price": "Mostrar solo artículos por encima de este precio",
+          "max_price": "Mostrar solo artículos por debajo de este precio",
+          "listing_type": "Filtrar por subasta, cómpralo ya, o mostrar ambos",
+          "update_interval": "Con qué frecuencia verificar nuevos anuncios (5-1440 minutos)"
+        }
+      },
+      "confirm_delete": {
+        "title": "Confirmar eliminación",
+        "description": "¿Está seguro de que desea eliminar esta búsqueda?\n\nBúsqueda: {search_query}\n\nEsta acción no se puede deshacer.",
+        "data": {
+          "confirm": "Sí, eliminar esta búsqueda"
+        }
+      }
+    },
+    "error": {
+      "invalid_query": "Las palabras clave de búsqueda no pueden estar vacías. Por favor, ingrese lo que desea buscar.",
+      "invalid_price_range": "El precio máximo debe ser mayor que el precio mínimo."
+    }
+  }
+}

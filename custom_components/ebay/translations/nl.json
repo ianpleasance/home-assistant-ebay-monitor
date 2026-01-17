@@ -1,0 +1,81 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "eBay-account toevoegen",
+        "description": "Voer een vriendelijke naam in voor dit eBay-account (bijv. 'Persoonlijk', 'Zakelijk'). U kunt indien nodig meerdere accounts toevoegen.",
+        "data": {
+          "account_name": "Accountnaam"
+        }
+      },
+      "credentials": {
+        "title": "eBay ontwikkelaarsreferenties",
+        "description": "Voer uw eBay API-referenties in van het eBay Ontwikkelaarsprogramma.\n\nOm deze referenties te verkrijgen:\n1. Bezoek https://developer.ebay.com/\n2. Meld u aan en ga naar 'Mijn account' → 'Applicatiesleutels'\n3. Maak een nieuwe applicatie (Productieomgeving)\n4. Kopieer de onderstaande referenties",
+        "data": {
+          "app_id": "Applicatie-ID (App ID / Client ID)",
+          "dev_id": "Ontwikkelaar-ID (Dev ID)",
+          "cert_id": "Certificaat-ID (Cert ID / Client Secret)",
+          "token": "Gebruikersauthenticatietoken"
+        },
+        "data_description": {
+          "app_id": "Uw applicatie-identificatie van het eBay Ontwikkelaarsportaal",
+          "dev_id": "Uw ontwikkelaarsaccount-identificatie",
+          "cert_id": "Uw applicatiecertificaat/geheime sleutel",
+          "token": "OAuth gebruikerstoken - genereer deze vanuit de sectie 'Gebruikerstokens'"
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "Een of meer referenties ontbreken. Controleer of alle velden zijn ingevuld.",
+      "cannot_connect": "Kan geen verbinding maken met de eBay API. Controleer of uw referenties correct zijn.",
+      "unknown": "Er is een onverwachte fout opgetreden. Probeer het opnieuw."
+    },
+    "abort": {
+      "already_configured": "Een account met deze naam is al geconfigureerd. Kies een andere naam."
+    }
+  },
+  "options": {
+    "step": {
+      "search_list": {
+        "title": "Opgeslagen zoekopdrachten beheren",
+        "description": "Account: {account_name}\nHuidige zoekopdrachten: {search_count}\n\nBeheer uw opgeslagen eBay-zoekopdrachten. Elke zoekopdracht maakt een sensor die automatisch wordt bijgewerkt.",
+        "data": {
+          "action": "Actie"
+        }
+      },
+      "search_config": {
+        "title": "Zoekopdracht {action}",
+        "description": "Configureer uw zoekparameters. De zoekopdracht wordt automatisch uitgevoerd op het door u opgegeven interval.",
+        "data": {
+          "search_query": "Zoekwoorden",
+          "site": "eBay-site (Land)",
+          "category_id": "Categorie-ID (optioneel)",
+          "min_price": "Minimumprijs (optioneel)",
+          "max_price": "Maximumprijs (optioneel)",
+          "listing_type": "Type aanbieding",
+          "update_interval": "Update-interval (minuten)"
+        },
+        "data_description": {
+          "search_query": "Waar u naar wilt zoeken (bijv. 'vintage camera')",
+          "site": "Welke eBay-landsite te doorzoeken",
+          "category_id": "eBay-categorienummer om resultaten te filteren (vind dit in eBay-URL's)",
+          "min_price": "Alleen items boven deze prijs tonen",
+          "max_price": "Alleen items onder deze prijs tonen",
+          "listing_type": "Filteren op veiling, direct kopen, of beide tonen",
+          "update_interval": "Hoe vaak controleren op nieuwe aanbiedingen (5-1440 minuten)"
+        }
+      },
+      "confirm_delete": {
+        "title": "Verwijdering bevestigen",
+        "description": "Weet u zeker dat u deze zoekopdracht wilt verwijderen?\n\nZoekopdracht: {search_query}\n\nDit kan niet ongedaan worden gemaakt.",
+        "data": {
+          "confirm": "Ja, verwijder deze zoekopdracht"
+        }
+      }
+    },
+    "error": {
+      "invalid_query": "Zoekwoorden kunnen niet leeg zijn. Voer in waar u naar wilt zoeken.",
+      "invalid_price_range": "De maximumprijs moet hoger zijn dan de minimumprijs."
+    }
+  }
+}

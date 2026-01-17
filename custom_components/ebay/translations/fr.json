@@ -1,0 +1,81 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Ajouter un compte eBay",
+        "description": "Entrez un nom convivial pour ce compte eBay (par exemple, 'Personnel', 'Entreprise'). Vous pouvez ajouter plusieurs comptes si nécessaire.",
+        "data": {
+          "account_name": "Nom du compte"
+        }
+      },
+      "credentials": {
+        "title": "Identifiants développeur eBay",
+        "description": "Entrez vos identifiants API eBay du programme développeur eBay.\n\nPour obtenir ces identifiants :\n1. Visitez https://developer.ebay.com/\n2. Connectez-vous et allez dans 'Mon compte' → 'Clés d'application'\n3. Créez une nouvelle application (environnement Production)\n4. Copiez les identifiants ci-dessous",
+        "data": {
+          "app_id": "ID d'application (App ID / Client ID)",
+          "dev_id": "ID développeur (Dev ID)",
+          "cert_id": "ID de certificat (Cert ID / Client Secret)",
+          "token": "Jeton d'authentification utilisateur"
+        },
+        "data_description": {
+          "app_id": "Votre identifiant d'application depuis le portail développeur eBay",
+          "dev_id": "Votre identifiant de compte développeur",
+          "cert_id": "Votre certificat d'application/clé secrète",
+          "token": "Jeton utilisateur OAuth - générez-le depuis la section 'Jetons utilisateur'"
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "Un ou plusieurs identifiants sont manquants. Veuillez vérifier que tous les champs sont remplis.",
+      "cannot_connect": "Impossible de se connecter à l'API eBay. Veuillez vérifier que vos identifiants sont corrects.",
+      "unknown": "Une erreur inattendue s'est produite. Veuillez réessayer."
+    },
+    "abort": {
+      "already_configured": "Un compte avec ce nom est déjà configuré. Veuillez choisir un nom différent."
+    }
+  },
+  "options": {
+    "step": {
+      "search_list": {
+        "title": "Gérer les recherches enregistrées",
+        "description": "Compte : {account_name}\nRecherches actuelles : {search_count}\n\nGérez vos recherches eBay enregistrées. Chaque recherche créera un capteur qui se met à jour automatiquement.",
+        "data": {
+          "action": "Action"
+        }
+      },
+      "search_config": {
+        "title": "{action} une recherche",
+        "description": "Configurez vos paramètres de recherche. La recherche s'exécutera automatiquement à l'intervalle que vous spécifiez.",
+        "data": {
+          "search_query": "Mots-clés de recherche",
+          "site": "Site eBay (Pays)",
+          "category_id": "ID de catégorie (optionnel)",
+          "min_price": "Prix minimum (optionnel)",
+          "max_price": "Prix maximum (optionnel)",
+          "listing_type": "Type d'annonce",
+          "update_interval": "Intervalle de mise à jour (minutes)"
+        },
+        "data_description": {
+          "search_query": "Ce que vous voulez rechercher (par exemple, 'appareil photo vintage')",
+          "site": "Le site eBay du pays à rechercher",
+          "category_id": "Numéro de catégorie eBay pour filtrer les résultats (trouvez ceci dans les URLs eBay)",
+          "min_price": "N'afficher que les articles au-dessus de ce prix",
+          "max_price": "N'afficher que les articles en dessous de ce prix",
+          "listing_type": "Filtrer par enchère, achat immédiat, ou afficher les deux",
+          "update_interval": "Fréquence de vérification des nouvelles annonces (5-1440 minutes)"
+        }
+      },
+      "confirm_delete": {
+        "title": "Confirmer la suppression",
+        "description": "Êtes-vous sûr de vouloir supprimer cette recherche ?\n\nRecherche : {search_query}\n\nCette action ne peut pas être annulée.",
+        "data": {
+          "confirm": "Oui, supprimer cette recherche"
+        }
+      }
+    },
+    "error": {
+      "invalid_query": "Les mots-clés de recherche ne peuvent pas être vides. Veuillez entrer ce que vous voulez rechercher.",
+      "invalid_price_range": "Le prix maximum doit être supérieur au prix minimum."
+    }
+  }
+}

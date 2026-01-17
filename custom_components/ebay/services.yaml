@@ -1,0 +1,255 @@
+# Services for eBay integration
+
+refresh_bids:
+  name: Refresh Bids
+  description: Refresh the list of active bids for specified account(s)
+  fields:
+    account:
+      name: Account
+      description: eBay account name (optional, refreshes all if not specified)
+      example: "My Personal eBay"
+      selector:
+        text:
+
+refresh_watchlist:
+  name: Refresh Watchlist
+  description: Refresh the watchlist for specified account(s)
+  fields:
+    account:
+      name: Account
+      description: eBay account name (optional, refreshes all if not specified)
+      example: "My Personal eBay"
+      selector:
+        text:
+
+refresh_purchases:
+  name: Refresh Purchases
+  description: Refresh the purchase history for specified account(s)
+  fields:
+    account:
+      name: Account
+      description: eBay account name (optional, refreshes all if not specified)
+      example: "My Personal eBay"
+      selector:
+        text:
+
+refresh_search:
+  name: Refresh Search
+  description: Refresh a specific saved search
+  fields:
+    search_id:
+      name: Search ID
+      description: The unique ID of the search to refresh
+      required: true
+      example: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+      selector:
+        text:
+
+refresh_account:
+  name: Refresh Account
+  description: Refresh all data (bids, watchlist, purchases, searches) for a specific account
+  fields:
+    account:
+      name: Account
+      description: eBay account name
+      required: true
+      example: "My Personal eBay"
+      selector:
+        text:
+
+refresh_all:
+  name: Refresh All
+  description: Refresh all data for all accounts
+
+create_search:
+  name: Create Search
+  description: Create a new saved search for an account
+  fields:
+    account:
+      name: Account
+      description: eBay account name
+      required: true
+      example: "My Personal eBay"
+      selector:
+        text:
+    search_query:
+      name: Search Query
+      description: The search terms
+      required: true
+      example: "vintage camera"
+      selector:
+        text:
+    site:
+      name: eBay Site
+      description: Which eBay site to search
+      required: true
+      default: "uk"
+      example: "uk"
+      selector:
+        select:
+          options:
+            - label: "United Kingdom"
+              value: "uk"
+            - label: "United States"
+              value: "us"
+            - label: "Germany"
+              value: "de"
+            - label: "France"
+              value: "fr"
+            - label: "Italy"
+              value: "it"
+            - label: "Spain"
+              value: "es"
+            - label: "Australia"
+              value: "au"
+            - label: "Canada"
+              value: "ca"
+    category_id:
+      name: Category ID
+      description: eBay category ID to filter results (optional)
+      example: "625"
+      selector:
+        text:
+    min_price:
+      name: Minimum Price
+      description: Minimum price filter (optional)
+      example: 50.0
+      selector:
+        number:
+          min: 0
+          step: 0.01
+          mode: box
+    max_price:
+      name: Maximum Price
+      description: Maximum price filter (optional)
+      example: 500.0
+      selector:
+        number:
+          min: 0
+          step: 0.01
+          mode: box
+    listing_type:
+      name: Listing Type
+      description: Type of listings to include
+      default: "both"
+      example: "auction"
+      selector:
+        select:
+          options:
+            - label: "Both Auction and Buy It Now"
+              value: "both"
+            - label: "Auction Only"
+              value: "auction"
+            - label: "Buy It Now Only"
+              value: "buy_it_now"
+    update_interval:
+      name: Update Interval
+      description: How often to check for new results (in minutes)
+      default: 15
+      example: 15
+      selector:
+        number:
+          min: 5
+          max: 1440
+          step: 5
+          mode: box
+
+update_search:
+  name: Update Search
+  description: Update an existing saved search
+  fields:
+    search_id:
+      name: Search ID
+      description: The unique ID of the search to update
+      required: true
+      example: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+      selector:
+        text:
+    search_query:
+      name: Search Query
+      description: The search terms (optional, keeps existing if not provided)
+      example: "vintage camera"
+      selector:
+        text:
+    site:
+      name: eBay Site
+      description: Which eBay site to search (optional, keeps existing if not provided)
+      example: "uk"
+      selector:
+        select:
+          options:
+            - label: "United Kingdom"
+              value: "uk"
+            - label: "United States"
+              value: "us"
+            - label: "Germany"
+              value: "de"
+            - label: "France"
+              value: "fr"
+            - label: "Italy"
+              value: "it"
+            - label: "Spain"
+              value: "es"
+            - label: "Australia"
+              value: "au"
+            - label: "Canada"
+              value: "ca"
+    category_id:
+      name: Category ID
+      description: eBay category ID to filter results (optional)
+      example: "625"
+      selector:
+        text:
+    min_price:
+      name: Minimum Price
+      description: Minimum price filter (optional)
+      example: 50.0
+      selector:
+        number:
+          min: 0
+          step: 0.01
+          mode: box
+    max_price:
+      name: Maximum Price
+      description: Maximum price filter (optional)
+      example: 500.0
+      selector:
+        number:
+          min: 0
+          step: 0.01
+          mode: box
+    listing_type:
+      name: Listing Type
+      description: Type of listings to include (optional, keeps existing if not provided)
+      example: "auction"
+      selector:
+        select:
+          options:
+            - label: "Both Auction and Buy It Now"
+              value: "both"
+            - label: "Auction Only"
+              value: "auction"
+            - label: "Buy It Now Only"
+              value: "buy_it_now"
+    update_interval:
+      name: Update Interval
+      description: How often to check for new results in minutes (optional, keeps existing if not provided)
+      example: 15
+      selector:
+        number:
+          min: 5
+          max: 1440
+          step: 5
+          mode: box
+
+delete_search:
+  name: Delete Search
+  description: Delete a saved search
+  fields:
+    search_id:
+      name: Search ID
+      description: The unique ID of the search to delete
+      required: true
+      example: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+      selector:
+        text:

@@ -1,0 +1,69 @@
+blueprint:
+  name: eBay - New Search Result Alert
+  description: Send a notification when a new item matches your saved search
+  domain: automation
+  source_url: https://github.com/planetbuilders/ebay-integration/blueprints/automation/ebay_new_search_result.yaml
+  input:
+    search_query:
+      name: Search Query
+      description: Which search to monitor (leave blank for all searches)
+      default: ""
+      selector:
+        text:
+    max_price:
+      name: Maximum Price Filter
+      description: Only notify if item is below this price (optional)
+      default: null
+      selector:
+        number:
+          min: 0
+          step: 0.01
+          mode: box
+    notify_service:
+      name: Notification Service
+      description: The notification service to use
+      selector:
+        target:
+    include_seller:
+      name: Include Seller Info
+      description: Include seller information in the notification
+      default: true
+      selector:
+        boolean:
+
+trigger:
+  - platform: event
+    event_type: ebay_new_search_result
+
+condition:
+  - condition: template
+    value_template: >-
+      {{ !search_query or trigger.event.data.search_query == search_query }}
+  - condition: template
+    value_template: >-
+      {% if max_price %}
+        {{ trigger.event.data.item.current_price.value <= max_price }}
+      {% else %}
+        true
+      {% endif %}
+
+action:
+  - service: !input notify_service
+    data:
+      title: "🔍 New eBay listing found!"
+      message: >-
+        {{ trigger.event.data.item.title }}
+        
+        Price: {{ trigger.event.data.item.current_price.value }} {{ trigger.event.data.item.current_price.currency }}
+        Type: {{ trigger.event.data.item.listing_type }}
+        {% if include_seller %}
+        Seller: {{ trigger.event.data.item.seller_username }} ({{ trigger.event.data.item.seller_feedback_score }}, {{ trigger.event.data.item.seller_positive_percent }}%)
+        {% endif %}
+      data:
+        url: "{{ trigger.event.data.item.item_url }}"
+        tag: "ebay_search_{{ trigger.event.data.item.item_id }}"
+        image: "{{ trigger.event.data.item.image_url }}"
+        actions:
+          - action: "URI"
+            title: "View on eBay"
+            uri: "{{ trigger.event.data.item.item_url }}"

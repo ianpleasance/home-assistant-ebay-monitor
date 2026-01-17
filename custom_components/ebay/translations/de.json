@@ -1,0 +1,81 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "eBay-Konto hinzufügen",
+        "description": "Geben Sie einen benutzerfreundlichen Namen für dieses eBay-Konto ein (z.B. 'Privat', 'Geschäftlich'). Sie können bei Bedarf mehrere Konten hinzufügen.",
+        "data": {
+          "account_name": "Kontoname"
+        }
+      },
+      "credentials": {
+        "title": "eBay-Entwickler-Anmeldedaten",
+        "description": "Geben Sie Ihre eBay-API-Anmeldedaten aus dem eBay-Entwicklerprogramm ein.\n\nSo erhalten Sie diese Anmeldedaten:\n1. Besuchen Sie https://developer.ebay.com/\n2. Melden Sie sich an und gehen Sie zu 'Mein Konto' → 'Anwendungsschlüssel'\n3. Erstellen Sie eine neue Anwendung (Produktionsumgebung)\n4. Kopieren Sie die untenstehenden Anmeldedaten",
+        "data": {
+          "app_id": "Anwendungs-ID (App ID / Client ID)",
+          "dev_id": "Entwickler-ID (Dev ID)",
+          "cert_id": "Zertifikats-ID (Cert ID / Client Secret)",
+          "token": "Benutzer-Authentifizierungstoken"
+        },
+        "data_description": {
+          "app_id": "Ihre Anwendungskennung aus dem eBay-Entwicklerportal",
+          "dev_id": "Ihre Entwicklerkontoidentifikation",
+          "cert_id": "Ihr Anwendungszertifikat/geheimer Schlüssel",
+          "token": "OAuth-Benutzertoken - generieren Sie dies im Bereich 'Benutzertoken'"
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "Eine oder mehrere Anmeldedaten fehlen. Bitte überprüfen Sie, ob alle Felder ausgefüllt sind.",
+      "cannot_connect": "Verbindung zur eBay-API nicht möglich. Bitte überprüfen Sie, ob Ihre Anmeldedaten korrekt sind.",
+      "unknown": "Ein unerwarteter Fehler ist aufgetreten. Bitte versuchen Sie es erneut."
+    },
+    "abort": {
+      "already_configured": "Ein Konto mit diesem Namen ist bereits konfiguriert. Bitte wählen Sie einen anderen Namen."
+    }
+  },
+  "options": {
+    "step": {
+      "search_list": {
+        "title": "Gespeicherte Suchen verwalten",
+        "description": "Konto: {account_name}\nAktuelle Suchen: {search_count}\n\nVerwalten Sie Ihre gespeicherten eBay-Suchen. Jede Suche erstellt einen Sensor, der sich automatisch aktualisiert.",
+        "data": {
+          "action": "Aktion"
+        }
+      },
+      "search_config": {
+        "title": "Suche {action}",
+        "description": "Konfigurieren Sie Ihre Suchparameter. Die Suche wird automatisch im von Ihnen angegebenen Intervall ausgeführt.",
+        "data": {
+          "search_query": "Suchbegriffe",
+          "site": "eBay-Seite (Land)",
+          "category_id": "Kategorie-ID (optional)",
+          "min_price": "Mindestpreis (optional)",
+          "max_price": "Höchstpreis (optional)",
+          "listing_type": "Angebotstyp",
+          "update_interval": "Aktualisierungsintervall (Minuten)"
+        },
+        "data_description": {
+          "search_query": "Wonach Sie suchen möchten (z.B. 'Vintage-Kamera')",
+          "site": "Welche eBay-Länderseite durchsucht werden soll",
+          "category_id": "eBay-Kategorienummer zum Filtern der Ergebnisse (in eBay-URLs zu finden)",
+          "min_price": "Nur Artikel über diesem Preis anzeigen",
+          "max_price": "Nur Artikel unter diesem Preis anzeigen",
+          "listing_type": "Nach Auktion, Sofort-Kaufen filtern oder beide anzeigen",
+          "update_interval": "Wie oft nach neuen Angeboten gesucht werden soll (5-1440 Minuten)"
+        }
+      },
+      "confirm_delete": {
+        "title": "Löschen bestätigen",
+        "description": "Sind Sie sicher, dass Sie diese Suche löschen möchten?\n\nSuche: {search_query}\n\nDies kann nicht rückgängig gemacht werden.",
+        "data": {
+          "confirm": "Ja, diese Suche löschen"
+        }
+      }
+    },
+    "error": {
+      "invalid_query": "Suchbegriffe dürfen nicht leer sein. Bitte geben Sie ein, wonach Sie suchen möchten.",
+      "invalid_price_range": "Der Höchstpreis muss größer als der Mindestpreis sein."
+    }
+  }
+}

@@ -1,0 +1,81 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Add eBay Account",
+        "description": "Enter a friendly name for this eBay account (e.g., 'Personal', 'Business'). You can add multiple accounts if needed.",
+        "data": {
+          "account_name": "Account Name"
+        }
+      },
+      "credentials": {
+        "title": "eBay Developer Credentials",
+        "description": "Enter your eBay API credentials from the eBay Developer Program.\n\nTo get these credentials:\n1. Visit https://developer.ebay.com/\n2. Sign in and go to 'My Account' → 'Application Keys'\n3. Create a new application (Production environment)\n4. Copy the credentials below",
+        "data": {
+          "app_id": "Application ID (App ID / Client ID)",
+          "dev_id": "Developer ID (Dev ID)",
+          "cert_id": "Certificate ID (Cert ID / Client Secret)",
+          "token": "User Authentication Token"
+        },
+        "data_description": {
+          "app_id": "Your application identifier from eBay Developer Portal",
+          "dev_id": "Your developer account identifier",
+          "cert_id": "Your application certificate/secret key",
+          "token": "OAuth user token - generate this from 'User Tokens' section"
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "One or more credentials are missing. Please check all fields are filled in.",
+      "cannot_connect": "Cannot connect to eBay API. Please verify your credentials are correct.",
+      "unknown": "An unexpected error occurred. Please try again."
+    },
+    "abort": {
+      "already_configured": "An account with this name is already configured. Please choose a different name."
+    }
+  },
+  "options": {
+    "step": {
+      "search_list": {
+        "title": "Manage Saved Searches",
+        "description": "Account: {account_name}\nCurrent searches: {search_count}\n\nManage your saved eBay searches. Each search will create a sensor that updates automatically.",
+        "data": {
+          "action": "Action"
+        }
+      },
+      "search_config": {
+        "title": "{action} Search",
+        "description": "Configure your search parameters. The search will run automatically at the interval you specify.",
+        "data": {
+          "search_query": "Search Keywords",
+          "site": "eBay Site (Country)",
+          "category_id": "Category ID (optional)",
+          "min_price": "Minimum Price (optional)",
+          "max_price": "Maximum Price (optional)",
+          "listing_type": "Listing Type",
+          "update_interval": "Update Interval (minutes)"
+        },
+        "data_description": {
+          "search_query": "What you want to search for (e.g., 'vintage camera')",
+          "site": "Which country's eBay site to search",
+          "category_id": "eBay category number to filter results (find this in eBay URLs)",
+          "min_price": "Only show items above this price",
+          "max_price": "Only show items below this price",
+          "listing_type": "Filter by auction, buy-it-now, or show both",
+          "update_interval": "How often to check for new listings (5-1440 minutes)"
+        }
+      },
+      "confirm_delete": {
+        "title": "Confirm Deletion",
+        "description": "Are you sure you want to delete this search?\n\nSearch: {search_query}\n\nThis cannot be undone.",
+        "data": {
+          "confirm": "Yes, delete this search"
+        }
+      }
+    },
+    "error": {
+      "invalid_query": "Search keywords cannot be empty. Please enter what you want to search for.",
+      "invalid_price_range": "Maximum price must be greater than minimum price."
+    }
+  }
+}

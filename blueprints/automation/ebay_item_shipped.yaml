@@ -1,0 +1,48 @@
+blueprint:
+  name: eBay - Package Shipped Notification
+  description: Send a notification when your eBay purchase has been shipped
+  domain: automation
+  source_url: https://github.com/planetbuilders/ebay-integration/blueprints/automation/ebay_item_shipped.yaml
+  input:
+    ebay_account:
+      name: eBay Account
+      description: Which eBay account to monitor (leave blank for all accounts)
+      default: ""
+      selector:
+        text:
+    notify_service:
+      name: Notification Service
+      description: The notification service to use
+      selector:
+        target:
+    include_tracking:
+      name: Include Tracking Number
+      description: Include tracking number in notification (if available)
+      default: true
+      selector:
+        boolean:
+
+trigger:
+  - platform: event
+    event_type: ebay_item_shipped
+
+condition:
+  - condition: template
+    value_template: >-
+      {{ !ebay_account or trigger.event.data.account == ebay_account }}
+
+action:
+  - service: !input notify_service
+    data:
+      title: "📦 Your eBay package has shipped!"
+      message: >-
+        {{ trigger.event.data.item.title }}
+        
+        Seller: {{ trigger.event.data.item.seller_username }}
+        {% if include_tracking and trigger.event.data.item.tracking_number %}
+        Tracking: {{ trigger.event.data.item.tracking_number }}
+        {% endif %}
+      data:
+        url: "{{ trigger.event.data.item.item_url }}"
+        tag: "ebay_shipped_{{ trigger.event.data.item.item_id }}"
+        image: "{{ trigger.event.data.item.image_url }}"
