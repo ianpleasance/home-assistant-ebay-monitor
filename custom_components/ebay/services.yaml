@@ -61,6 +61,17 @@ refresh_all:
   name: Refresh All
   description: Refresh all data for all accounts
 
+refresh_api_usage:
+  name: Refresh API Usage
+  description: Refresh API rate limit usage data from eBay Analytics API
+  fields:
+    account:
+      name: Account
+      description: eBay account name (optional, refreshes all if not specified)
+      example: "My Personal eBay"
+      selector:
+        text:
+
 create_search:
   name: Create Search
   description: Create a new saved search for an account
@@ -251,5 +262,22 @@ delete_search:
       description: The unique ID of the search to delete
       required: true
       example: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+      selector:
+        text:
+
+get_rate_limits:
+  name: Get Rate Limits
+  description: Retrieve API rate limit information from eBay Analytics API. Results are logged to Home Assistant logs.
+  fields:
+    account:
+      name: Account
+      description: The eBay account name (optional, uses first account if not specified)
+      example: "atariian"
+      selector:
+        text:
+    api_name:
+      name: API Name
+      description: Optional API name to filter results (e.g., 'finding', 'trading', 'buy')
+      example: "finding"
       selector:
         text:

@@ -9,6 +9,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.helpers import config_validation as cv
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.storage import Store
 from homeassistant.helpers.typing import ConfigType
 
@@ -30,8 +31,10 @@ from .const import (
     DOMAIN,
     SERVICE_CREATE_SEARCH,
     SERVICE_DELETE_SEARCH,
+    SERVICE_GET_RATE_LIMITS,
     SERVICE_REFRESH_ACCOUNT,
     SERVICE_REFRESH_ALL,
+    SERVICE_REFRESH_API_USAGE,
     SERVICE_REFRESH_BIDS,
     SERVICE_REFRESH_PURCHASES,
     SERVICE_REFRESH_SEARCH,
@@ -83,6 +86,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         api=api,
         account_name=account_name,
         update_interval=timedelta(minutes=DEFAULT_BIDS_INTERVAL),
+        config_entry=entry,
     )
     
     watchlist_coordinator = EbayWatchlistCoordinator(
@@ -90,6 +94,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         api=api,
         account_name=account_name,
         update_interval=timedelta(minutes=DEFAULT_WATCHLIST_INTERVAL),
+        config_entry=entry,
     )
     
     purchases_coordinator = EbayPurchasesCoordinator(
@@ -97,6 +102,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         api=api,
         account_name=account_name,
         update_interval=timedelta(minutes=DEFAULT_PURCHASES_INTERVAL),
+        config_entry=entry,
     )
     
     # Store coordinators and data
@@ -112,7 +118,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     
     # Load saved searches and create coordinators
     for search_id, search_config in searches_data.items():
-        await _create_search_coordinator(hass, entry, search_id, search_config)
+        await _create_search_coordinator(hass, entry, search_id, search_config, is_setup=True)
     
     # Initial coordinator refresh
     await bids_coordinator.async_config_entry_first_refresh()
@@ -144,6 +150,7 @@ async def _create_search_coordinator(
     entry: ConfigEntry,
     search_id: str,
     search_config: dict,
+    is_setup: bool = False,
 ) -> EbaySearchCoordinator:
     """Create a search coordinator."""
     entry_data = hass.data[DOMAIN][entry.entry_id]
@@ -157,9 +164,15 @@ async def _create_search_coordinator(
         update_interval=timedelta(
             minutes=search_config.get(CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL)
         ),
+        config_entry=entry,
     )
     
-    await coordinator.async_config_entry_first_refresh()
+    # Use async_config_entry_first_refresh only during initial setup
+    # Otherwise use regular async_refresh
+    if is_setup:
+        await coordinator.async_config_entry_first_refresh()
+    else:
+        await coordinator.async_refresh()
     
     entry_data["searches"][search_id] = {
         "config": search_config,
@@ -242,6 +255,33 @@ async def _async_register_services(hass: HomeAssistant) -> None:
         
         await asyncio.gather(*tasks)
     
+    async def refresh_api_usage(call: ServiceCall) -> None:
+        """Refresh API usage sensor(s)."""
+        account = call.data.get(ATTR_ACCOUNT)
+        
+        # Get entity registry to find API usage sensors
+        entity_reg = er.async_get(hass)
+        
+        for entry_id, data in hass.data[DOMAIN].items():
+            # Skip if specific account requested and this isn't it
+            if account and data["account_name"] != account:
+                continue
+            
+            # Find the API usage sensor for this account
+            account_name = data["account_name"]
+            sensor_id = f"sensor.ebay_{account_name.lower().replace(' ', '_')}_api_usage"
+            
+            entity = entity_reg.async_get(sensor_id)
+            if entity:
+                # Trigger update
+                await hass.services.async_call(
+                    "homeassistant",
+                    "update_entity",
+                    {"entity_id": sensor_id},
+                    blocking=True
+                )
+                _LOGGER.info("Refreshed API usage for account: %s", account_name)
+    
     async def create_search(call: ServiceCall) -> None:
         """Create a new search."""
         account = call.data[ATTR_ACCOUNT]
@@ -250,6 +290,8 @@ async def _async_register_services(hass: HomeAssistant) -> None:
         for entry_id, data in hass.data[DOMAIN].items():
             if data["account_name"] == account:
                 import uuid
+                from homeassistant.helpers.entity_platform import async_get_platforms
+                
                 search_id = str(uuid.uuid4())
                 
                 search_config = {
@@ -277,6 +319,27 @@ async def _async_register_services(hass: HomeAssistant) -> None:
                 searches[search_id] = search_config
                 await data["store"].async_save(searches)
                 
+                # Create the entity dynamically
+                # Find the sensor platform for this entry
+                platforms = async_get_platforms(hass, DOMAIN)
+                for platform in platforms:
+                    if platform.config_entry.entry_id == entry_id and platform.domain == "sensor":
+                        # Import here to avoid circular dependency
+                        from .sensor import EbaySearchSensor
+                        
+                        # Create the new sensor
+                        new_sensor = EbaySearchSensor(
+                            coordinator=data["searches"][search_id]["coordinator"],
+                            account_name=data["account_name"],
+                            search_id=search_id,
+                            search_query=search_config[CONF_SEARCH_QUERY],
+                        )
+                        
+                        # Add it to the platform
+                        await platform.async_add_entities([new_sensor])
+                        _LOGGER.info(f"Created search {search_id} and entity for account {account}")
+                        return
+                
                 _LOGGER.info(f"Created search {search_id} for account {account}")
                 return
     
@@ -289,6 +352,10 @@ async def _async_register_services(hass: HomeAssistant) -> None:
             if search_id in data["searches"]:
                 search_data = data["searches"][search_id]
                 search_config = search_data["config"]
+                coordinator = search_data["coordinator"]
+                
+                # Track if we need to update the interval
+                interval_changed = False
                 
                 # Update config with new values
                 for key in [
@@ -298,17 +365,25 @@ async def _async_register_services(hass: HomeAssistant) -> None:
                     CONF_MIN_PRICE,
                     CONF_MAX_PRICE,
                     CONF_LISTING_TYPE,
-                    CONF_UPDATE_INTERVAL,
                 ]:
                     if key in call.data:
                         search_config[key] = call.data[key]
                 
-                # Recreate coordinator with new config
-                old_coordinator = search_data["coordinator"]
+                # Handle update_interval separately
+                if CONF_UPDATE_INTERVAL in call.data:
+                    new_interval = call.data[CONF_UPDATE_INTERVAL]
+                    if search_config.get(CONF_UPDATE_INTERVAL) != new_interval:
+                        search_config[CONF_UPDATE_INTERVAL] = new_interval
+                        interval_changed = True
+                        # Update the coordinator's update_interval
+                        coordinator.update_interval = timedelta(minutes=new_interval)
+                        _LOGGER.info(f"Updated search {search_id} interval to {new_interval} minutes")
                 
-                # Create new coordinator
-                entry = hass.config_entries.async_get_entry(entry_id)
-                await _create_search_coordinator(hass, entry, search_id, search_config)
+                # Update the coordinator's search_config so next refresh uses new params
+                coordinator.search_config = search_config
+                
+                # Force a refresh with the new configuration
+                await coordinator.async_refresh()
                 
                 # Save to storage
                 searches = await data["store"].async_load() or {}
@@ -325,6 +400,21 @@ async def _async_register_services(hass: HomeAssistant) -> None:
         # Find and remove the search
         for entry_id, data in hass.data[DOMAIN].items():
             if search_id in data["searches"]:
+                # Build unique_id to find the entity
+                account_name = data["account_name"]
+                unique_id = f"ebay_{account_name}_search_{search_id}"
+                
+                # Remove from entity registry using unique_id
+                entity_registry = er.async_get(hass)
+                entity_id = entity_registry.async_get_entity_id("sensor", DOMAIN, unique_id)
+                
+                if entity_id:
+                    entity_registry.async_remove(entity_id)
+                    _LOGGER.info(f"Removed entity {entity_id} (unique_id: {unique_id})")
+                else:
+                    _LOGGER.warning(f"Entity with unique_id {unique_id} not found in registry")
+                
+                # Remove from runtime data
                 data["searches"].pop(search_id)
                 
                 # Save to storage
@@ -335,6 +425,57 @@ async def _async_register_services(hass: HomeAssistant) -> None:
                 _LOGGER.info(f"Deleted search {search_id}")
                 return
     
+    async def get_rate_limits(call: ServiceCall) -> None:
+        """Get API call tracking information."""
+        account = call.data.get(ATTR_ACCOUNT)
+        
+        # Find the entry for this account (or use first if no account specified)
+        for entry_id, data in hass.data[DOMAIN].items():
+            if account and data["account_name"] != account:
+                continue
+            
+            # Get rate limits from local tracking
+            rate_info = data["api"].get_rate_limits()
+            
+            # Log the information
+            _LOGGER.info("=" * 80)
+            _LOGGER.info("EBAY API CALL TRACKING - Account: %s", data["account_name"])
+            _LOGGER.info("=" * 80)
+            _LOGGER.info("NOTE: This shows LOCAL tracking data, not actual eBay quotas")
+            _LOGGER.info("eBay's Analytics API requires OAuth 2.0 (not available with Auth'n'Auth)")
+            _LOGGER.info("")
+            _LOGGER.info("Tracking started: %s", rate_info["tracking_start"])
+            _LOGGER.info("Current time: %s", rate_info["current_time"])
+            _LOGGER.info("Total API calls made: %d", rate_info["total_calls"])
+            _LOGGER.info("Estimated daily total: %.0f calls/day", rate_info["estimated_daily_total"])
+            _LOGGER.info("")
+            
+            for api in rate_info["apis"]:
+                _LOGGER.info("API: %s", api["api_name"].upper())
+                _LOGGER.info("  Calls made: %d", api["calls_made"])
+                _LOGGER.info("  Tracking duration: %.2f hours", api["hours_elapsed"])
+                _LOGGER.info("  Rate: %.1f calls/hour", api["calls_per_hour"])
+                _LOGGER.info("  Estimated daily: %.0f calls/day", api["estimated_daily"])
+                _LOGGER.info("")
+            
+            _LOGGER.info("Standard eBay Production Limits (for reference):")
+            _LOGGER.info("  Finding API: 5,000 calls/day")
+            _LOGGER.info("  Trading API: varies by call (typically 1,500-5,000/day)")
+            _LOGGER.info("  Shopping API: 5,000 calls/day")
+            _LOGGER.info("")
+            
+            if rate_info["estimated_daily_total"] > 4000:
+                _LOGGER.warning("⚠️  Estimated usage is HIGH - consider increasing update intervals")
+            elif rate_info["estimated_daily_total"] > 2000:
+                _LOGGER.info("ℹ️  Estimated usage is MODERATE - within safe limits")
+            else:
+                _LOGGER.info("✅ Estimated usage is LOW - well within limits")
+            
+            _LOGGER.info("=" * 80)
+            
+            # Only check first matching account
+            return
+    
     # Register all services
     hass.services.async_register(DOMAIN, SERVICE_REFRESH_BIDS, refresh_bids)
     hass.services.async_register(DOMAIN, SERVICE_REFRESH_WATCHLIST, refresh_watchlist)
@@ -342,6 +483,8 @@ async def _async_register_services(hass: HomeAssistant) -> None:
     hass.services.async_register(DOMAIN, SERVICE_REFRESH_SEARCH, refresh_search)
     hass.services.async_register(DOMAIN, SERVICE_REFRESH_ACCOUNT, refresh_account)
     hass.services.async_register(DOMAIN, SERVICE_REFRESH_ALL, refresh_all)
+    hass.services.async_register(DOMAIN, SERVICE_REFRESH_API_USAGE, refresh_api_usage)
     hass.services.async_register(DOMAIN, SERVICE_CREATE_SEARCH, create_search)
     hass.services.async_register(DOMAIN, SERVICE_UPDATE_SEARCH, update_search)
     hass.services.async_register(DOMAIN, SERVICE_DELETE_SEARCH, delete_search)
+    hass.services.async_register(DOMAIN, SERVICE_GET_RATE_LIMITS, get_rate_limits)

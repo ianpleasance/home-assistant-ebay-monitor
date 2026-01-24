@@ -1,19 +1,21 @@
 # eBay Integration for Home Assistant
 
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/custom-components/hacs)
-[![License](https://img.shields.io/github/license/ianpleasance/home-assistant-ebay-monitor)](LICENSE)
+[![License](https://img.shields.io/github/license/ianpleasance/ebay-integration)](LICENSE)
 
 A comprehensive Home Assistant integration for monitoring your eBay account activity. Track active bids, watchlist items, purchases, and create custom search alerts - all from your Home Assistant dashboard.
 
 ## Features
 
 - 🔍 **Saved Searches** - Create and manage multiple eBay searches with automatic updates
+- 🚀 **Modern Browse API** - Uses eBay's latest API with better rate limits and OAuth 2.0
 - 🎯 **Active Bids** - Monitor all your active bids with real-time status updates
 - 👁️ **Watchlist** - Track items you're watching
 - 📦 **Purchases** - Keep tabs on your purchase history and shipping status
 - 🔔 **Smart Alerts** - Automated notifications for bid changes, auction endings, and shipping updates
 - 🔄 **Multi-Account Support** - Manage multiple eBay accounts from one integration
 - 🎨 **Beautiful Dashboards** - Pre-built dashboard templates included
+- 📊 **API Tracking** - Monitor your API usage and avoid rate limits
 
 ## Installation
 
@@ -23,7 +25,7 @@ A comprehensive Home Assistant integration for monitoring your eBay account acti
 2. Click on "Integrations"
 3. Click the three dots in the top right corner
 4. Select "Custom repositories"
-5. Add this repository URL: `https://github.com/ianpleasance/home-assistant-ebay-monitor
+5. Add this repository URL: `https://github.com/ianpleasance/ebay-integration`
 6. Select category "Integration"
 7. Click "Add"
 8. Search for "eBay" in HACS
@@ -311,7 +313,7 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 
 ## License
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+This project is licensed under the Apache 2.0 License - see the LICENSE file for details.
 
 ## Disclaimer
 
@@ -319,7 +321,7 @@ This integration is not affiliated with or endorsed by eBay. Use at your own ris
 
 ## Support
 
-For issues, feature requests, or questions, please [open an issue](https://github.com/planetbuilders/ebay-integration/issues) on GitHub.
+For issues, feature requests, or questions, please [open an issue](https://github.com/ianpleasance/ebay-integration/issues) on GitHub.
 
 ## Changelog
 

@@ -64,6 +64,8 @@ SERVICE_REFRESH_ALL: Final = "refresh_all"
 SERVICE_CREATE_SEARCH: Final = "create_search"
 SERVICE_UPDATE_SEARCH: Final = "update_search"
 SERVICE_DELETE_SEARCH: Final = "delete_search"
+SERVICE_GET_RATE_LIMITS: Final = "get_rate_limits"
+SERVICE_REFRESH_API_USAGE: Final = "refresh_api_usage"
 
 # Storage
 STORAGE_KEY: Final = "ebay_searches"

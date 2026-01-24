@@ -33,6 +33,7 @@ class EbayBidsCoordinator(DataUpdateCoordinator):
         api: EbayAPI,
         account_name: str,
         update_interval: timedelta,
+        config_entry=None,
     ) -> None:
         """Initialize the coordinator."""
         super().__init__(
@@ -40,6 +41,7 @@ class EbayBidsCoordinator(DataUpdateCoordinator):
             _LOGGER,
             name=f"{DOMAIN}_bids_{account_name}",
             update_interval=update_interval,
+            config_entry=config_entry,
         )
         self.api = api
         self.account_name = account_name
@@ -47,10 +49,14 @@ class EbayBidsCoordinator(DataUpdateCoordinator):
 
     async def _async_update_data(self) -> list[dict[str, Any]]:
         """Fetch bid data."""
+        _LOGGER.debug("EbayBidsCoordinator: Starting update for account '%s'", self.account_name)
+        
         try:
             data = await self.api.get_my_ebay_buying()
             bids = data.get("bids", [])
 
+            _LOGGER.debug("EbayBidsCoordinator: Retrieved %d bids for account '%s'", len(bids), self.account_name)
+            
             # Fire events for changes
             self._check_bid_changes(bids)
 
@@ -60,6 +66,7 @@ class EbayBidsCoordinator(DataUpdateCoordinator):
             return bids
 
         except Exception as err:
+            _LOGGER.error("EbayBidsCoordinator: Error fetching bids for account '%s': %s", self.account_name, err)
             raise UpdateFailed(f"Error fetching bids: {err}") from err
 
     def _check_bid_changes(self, current_bids: list[dict[str, Any]]) -> None:
@@ -157,6 +164,7 @@ class EbayWatchlistCoordinator(DataUpdateCoordinator):
         api: EbayAPI,
         account_name: str,
         update_interval: timedelta,
+        config_entry=None,
     ) -> None:
         """Initialize the coordinator."""
         super().__init__(
@@ -164,17 +172,25 @@ class EbayWatchlistCoordinator(DataUpdateCoordinator):
             _LOGGER,
             name=f"{DOMAIN}_watchlist_{account_name}",
             update_interval=update_interval,
+            config_entry=config_entry,
         )
         self.api = api
         self.account_name = account_name
 
     async def _async_update_data(self) -> list[dict[str, Any]]:
         """Fetch watchlist data."""
+        _LOGGER.debug("EbayWatchlistCoordinator: Starting update for account '%s'", self.account_name)
+        
         try:
             data = await self.api.get_my_ebay_buying()
-            return data.get("watchlist", [])
+            watchlist = data.get("watchlist", [])
+            
+            _LOGGER.debug("EbayWatchlistCoordinator: Retrieved %d items for account '%s'", len(watchlist), self.account_name)
+            
+            return watchlist
 
         except Exception as err:
+            _LOGGER.error("EbayWatchlistCoordinator: Error fetching watchlist for account '%s': %s", self.account_name, err)
             raise UpdateFailed(f"Error fetching watchlist: {err}") from err
 
 
@@ -187,6 +203,7 @@ class EbayPurchasesCoordinator(DataUpdateCoordinator):
         api: EbayAPI,
         account_name: str,
         update_interval: timedelta,
+        config_entry=None,
     ) -> None:
         """Initialize the coordinator."""
         super().__init__(
@@ -194,6 +211,7 @@ class EbayPurchasesCoordinator(DataUpdateCoordinator):
             _LOGGER,
             name=f"{DOMAIN}_purchases_{account_name}",
             update_interval=update_interval,
+            config_entry=config_entry,
         )
         self.api = api
         self.account_name = account_name
@@ -201,10 +219,14 @@ class EbayPurchasesCoordinator(DataUpdateCoordinator):
 
     async def _async_update_data(self) -> list[dict[str, Any]]:
         """Fetch purchases data."""
+        _LOGGER.debug("EbayPurchasesCoordinator: Starting update for account '%s'", self.account_name)
+        
         try:
             data = await self.api.get_my_ebay_buying()
             purchases = data.get("purchases", [])
 
+            _LOGGER.debug("EbayPurchasesCoordinator: Retrieved %d purchases for account '%s'", len(purchases), self.account_name)
+            
             # Fire events for shipping changes
             self._check_shipping_changes(purchases)
 
@@ -214,6 +236,7 @@ class EbayPurchasesCoordinator(DataUpdateCoordinator):
             return purchases
 
         except Exception as err:
+            _LOGGER.error("EbayPurchasesCoordinator: Error fetching purchases for account '%s': %s", self.account_name, err)
             raise UpdateFailed(f"Error fetching purchases: {err}") from err
 
     def _check_shipping_changes(self, current_purchases: list[dict[str, Any]]) -> None:
@@ -260,6 +283,7 @@ class EbaySearchCoordinator(DataUpdateCoordinator):
         search_id: str,
         search_config: dict[str, Any],
         update_interval: timedelta,
+        config_entry=None,
     ) -> None:
         """Initialize the coordinator."""
         super().__init__(
@@ -267,6 +291,7 @@ class EbaySearchCoordinator(DataUpdateCoordinator):
             _LOGGER,
             name=f"{DOMAIN}_search_{account_name}_{search_id}",
             update_interval=update_interval,
+            config_entry=config_entry,
         )
         self.api = api
         self.account_name = account_name
@@ -276,6 +301,13 @@ class EbaySearchCoordinator(DataUpdateCoordinator):
 
     async def _async_update_data(self) -> list[dict[str, Any]]:
         """Fetch search results."""
+        _LOGGER.debug(
+            "EbaySearchCoordinator: Starting search update - Account: '%s', Search ID: '%s', Query: '%s'",
+            self.account_name,
+            self.search_id,
+            self.search_config["search_query"]
+        )
+        
         try:
             results = await self.api.search_items(
                 query=self.search_config["search_query"],
@@ -286,6 +318,13 @@ class EbaySearchCoordinator(DataUpdateCoordinator):
                 listing_type=self.search_config.get("listing_type"),
             )
 
+            _LOGGER.debug(
+                "EbaySearchCoordinator: Search completed - Account: '%s', Search ID: '%s', Results: %d items",
+                self.account_name,
+                self.search_id,
+                len(results)
+            )
+            
             # Fire events for new items
             self._check_new_items(results)
 
@@ -295,6 +334,13 @@ class EbaySearchCoordinator(DataUpdateCoordinator):
             return results
 
         except Exception as err:
+            _LOGGER.error(
+                "EbaySearchCoordinator: Error fetching search results - Account: '%s', Search ID: '%s', Query: '%s', Error: %s",
+                self.account_name,
+                self.search_id,
+                self.search_config["search_query"],
+                err
+            )
             raise UpdateFailed(f"Error fetching search results: {err}") from err
 
     def _check_new_items(self, current_results: list[dict[str, Any]]) -> None:

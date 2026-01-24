@@ -1,0 +1,354 @@
+title: eBay Searches
+views:
+  - title: Search Results
+    path: ebay-search-results
+    icon: mdi:magnify
+    badges: []
+    cards:
+      - type: markdown
+        content: >
+          # 🔍 eBay Search Results
+
+
+          {% set searches = states.sensor | selectattr('entity_id', 'match',
+          'sensor.ebay_.*_search_.*') | list %}
+
+          **{{ searches | length }} active searches** monitoring eBay
+
+
+          {% if searches | length == 0 %}
+
+          *No searches configured yet. Create one using the Manage tab.*
+
+          {% else %}
+
+
+          {% for search in searches %}
+
+          ## 🔍 {{ state_attr(search.entity_id, 'search_query') |
+          default('Search') }}
+
+
+          **{{ search.state }} items found** • Updated {{
+          relative_time(search.last_updated) }} ago ({{
+          as_timestamp(search.last_updated) | timestamp_custom('%d %b %Y
+          %H:%M:%S') }})
+
+          {% set auction_count = state_attr(search.entity_id, 'auction_count') |
+          default(0) %}
+
+          {% set buy_now_count = state_attr(search.entity_id, 'buy_now_count') |
+          default(0) %}
+
+          • 🔨 {{ auction_count }} Auctions • 💰 {{ buy_now_count }} Buy It Now
+
+
+          {% set items = state_attr(search.entity_id, 'items') %}
+
+          {% if items and items | length > 0 %}
+
+          {% for item in items[:8] %}
+
+          ---
+
+          ### [{{ item.title[:80] }}...]({{ item.item_url }})
+
+
+          **{% if item.current_price.currency == 'GBP' %}£{% elif
+          item.current_price.currency == 'USD' %}${% elif
+          item.current_price.currency == 'EUR' %}€{% else %}{{
+          item.current_price.currency }} {% endif %}{{ "%.2f" |
+          format(item.current_price.value) }}** {% if item.listing_type ==
+          'Auction' %}🔨 Auction{% if item.bid_count | default(0) > 0 %} ({{
+          item.bid_count }} {% if item.bid_count == 1 %}bid{% else %}bids{%
+          endif %}){% endif %}{% else %}💰 Buy It Now{% endif %}
+
+
+          👤 [{{ item.seller_username }}]({{ item.seller_url }}) • ⭐ {{
+          item.seller_positive_percent }}% ({{ item.seller_feedback_score }})
+
+          {% if item.end_time | default(none) %}⏰ Ends {{ item.end_time |
+          as_timestamp | timestamp_custom('%d %b %H:%M') }}{% endif %}
+
+
+          {% endfor %}
+
+          {% if items | length > 8 %}
+
+
+          *...and {{ items | length - 8 }} more items*
+
+          {% endif %}
+
+          {% else %}
+
+          *No items found yet*
+
+          {% endif %}
+
+
+          {% endfor %}
+
+          {% endif %}
+  - title: Search Grid
+    path: ebay-search-grid
+    icon: mdi:view-grid
+    badges: []
+    cards:
+      - type: markdown
+        content: >
+          # 📊 Search Overview
+
+
+          {% set searches = states.sensor | selectattr('entity_id', 'match',
+          'sensor.ebay_.*_search_.*') | list %}
+
+          {% set total_items = namespace(count=0) %}
+
+          {% for s in searches %}{% set total_items.count = total_items.count +
+          (s.state | int(0)) %}{% endfor %}
+
+
+          **{{ searches | length }} searches** • **{{ total_items.count }} total
+          items**
+
+
+          ---
+
+
+          {% for search in searches %}
+
+          ### {{ state_attr(search.entity_id, 'search_query') }}
+
+          **{{ search.state }} items** • Updated {{
+          relative_time(search.last_updated) }} ago ({{
+          as_timestamp(search.last_updated) | timestamp_custom('%d %b %Y
+          %H:%M:%S') }})
+
+          {% set auction_count = state_attr(search.entity_id, 'auction_count') |
+          default(0) %}
+
+          {% set buy_now_count = state_attr(search.entity_id, 'buy_now_count') |
+          default(0) %}
+
+          • 🔨 {{ auction_count }} Auctions • 💰 {{ buy_now_count }} Buy It Now
+
+
+          {% endfor %}
+  - title: Top Results
+    path: ebay-top-results
+    icon: mdi:star
+    badges: []
+    cards:
+      - type: markdown
+        content: >
+          # ⭐ Top Results from All Searches
+
+          Best deals from your saved searches.
+
+
+          {% set searches = states.sensor | selectattr('entity_id', 'match',
+          'sensor.ebay_.*_search_.*') | list %}
+
+          {% for search in searches %}
+
+
+          ## {{ state_attr(search.entity_id, 'search_query') }}
+
+
+          {% set items = state_attr(search.entity_id, 'items') %}
+
+          {% if items and items | length > 0 %}
+
+          {% for item in items[:3] %}
+
+
+          **{{ loop.index }}.** [{{ item.title[:60] }}...]({{ item.item_url }})
+
+          - **{% if item.current_price.currency == 'GBP' %}£{% elif
+          item.current_price.currency == 'USD' %}${% elif
+          item.current_price.currency == 'EUR' %}€{% else %}{{
+          item.current_price.currency }} {% endif %}{{ "%.2f" |
+          format(item.current_price.value) }}** {% if item.listing_type ==
+          'Auction' %}🔨 Auction{% else %}💰 Buy It Now{% endif %}
+
+          - Seller: {{ item.seller_username }} ({{ item.seller_positive_percent
+          }}%)
+
+          {% if item.end_time | default(none) %}- Ends: {{ item.end_time |
+          as_timestamp | timestamp_custom('%d %b %Y %H:%M:%S') }}{% endif %}
+
+
+          {% endfor %}
+
+          {% else %}
+
+          *No items yet*
+
+          {% endif %}
+
+
+          {% endfor %}
+  - title: Manage Searches
+    path: ebay-manage-searches
+    icon: mdi:cog
+    badges: []
+    cards:
+      - type: markdown
+        content: |
+          # ⚙️ Manage Searches
+      - type: entities
+        title: 🔄 Bulk Actions
+        entities:
+          - type: button
+            icon: mdi:refresh
+            name: Refresh All Searches
+            tap_action:
+              action: call-service
+              service: ebay.refresh_account
+              service_data:
+                account: atariian
+          - type: button
+            icon: mdi:speedometer
+            name: Check API Rate Limits
+            tap_action:
+              action: call-service
+              service: ebay.get_rate_limits
+              service_data:
+                account: atariian
+      - type: markdown
+        content: >
+          ## Your Searches
+
+
+          {% set searches = states.sensor | selectattr('entity_id', 'match',
+          'sensor.ebay_.*_search_.*') | list %}
+
+          {% for search in searches %}
+
+
+          ### {{ state_attr(search.entity_id, 'search_query') }}
+
+          - **Items:** {{ search.state }}
+
+          - **Updated:** {{ relative_time(search.last_updated) }} ago ({{
+          as_timestamp(search.last_updated) | timestamp_custom('%d %b %Y
+          %H:%M:%S') }})
+
+          - **Search ID:** `{{ state_attr(search.entity_id, 'search_id') }}`
+
+
+          **Refresh this search:**
+
+          ```yaml
+
+          service: ebay.refresh_search
+
+          data:
+            search_id: "{{ state_attr(search.entity_id, 'search_id') }}"
+          ```
+
+
+          **Delete this search:**
+
+          ```yaml
+
+          service: ebay.delete_search
+
+          data:
+            search_id: "{{ state_attr(search.entity_id, 'search_id') }}"
+          ```
+
+
+          {% endfor %}
+      - type: markdown
+        content: |
+          ## ➕ Create New Search
+
+          Go to **Developer Tools → Services** and use:
+
+          ```yaml
+          service: ebay.create_search
+          data:
+            account: atariian
+            search_query: "big trak"
+            site: uk
+            update_interval: 120  # minutes
+            min_price: 10  # optional
+            max_price: 500  # optional
+          ```
+  - title: Search Stats
+    path: ebay-search-stats
+    icon: mdi:chart-bar
+    badges: []
+    cards:
+      - type: markdown
+        content: >
+          # 📊 Search Statistics
+
+
+          {% set searches = states.sensor | selectattr('entity_id', 'match',
+          'sensor.ebay_.*_search_.*') | list %}
+
+          {% set total_items = namespace(count=0) %}
+
+          {% set total_auctions = namespace(count=0) %}
+
+          {% set total_buy_now = namespace(count=0) %}
+
+
+          {% for search in searches %}
+
+          {% set total_items.count = total_items.count + (search.state | int(0))
+          %}
+
+          {% set total_auctions.count = total_auctions.count +
+          (state_attr(search.entity_id, 'auction_count') | default(0)) %}
+
+          {% set total_buy_now.count = total_buy_now.count +
+          (state_attr(search.entity_id, 'buy_now_count') | default(0)) %}
+
+          {% endfor %}
+
+
+          ## Overview
+
+
+          - **Total Searches:** {{ searches | length }}
+
+          - **Total Items Found:** {{ total_items.count }}
+
+          - **Auctions:** {{ total_auctions.count }} ({{ (total_auctions.count /
+          total_items.count * 100) | round(1) if total_items.count > 0 else 0
+          }}%)
+
+          - **Buy It Now:** {{ total_buy_now.count }} ({{ (total_buy_now.count /
+          total_items.count * 100) | round(1) if total_items.count > 0 else 0
+          }}%)
+
+
+          ## Search Breakdown
+
+
+          {% for search in searches %}
+
+          ### {{ state_attr(search.entity_id, 'search_query') }}
+
+          - **Items:** {{ search.state }} (🔨 {{ state_attr(search.entity_id,
+          'auction_count') | default(0) }} auctions, 💰 {{
+          state_attr(search.entity_id, 'buy_now_count') | default(0) }}
+          buy-it-now)
+
+          - **Updated:** {{ relative_time(search.last_updated) }} ago ({{
+          as_timestamp(search.last_updated) | timestamp_custom('%d %b %Y
+          %H:%M:%S') }})
+
+          - **Site:** {{ state_attr(search.entity_id, 'site') | default('uk') |
+          upper }}
+
+          - **Update Interval:** {{ state_attr(search.entity_id,
+          'update_interval') | default('15') }} minutes
+
+
+          {% endfor %}
+

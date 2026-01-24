@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+from datetime import datetime
 from typing import Any
 
 from homeassistant.components.sensor import SensorEntity
@@ -9,13 +10,17 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
+from homeassistant.util import dt as dt_util
 
 from .const import (
     ATTR_ITEMS,
     ATTR_ITEM_COUNT,
     ATTR_LAST_UPDATED,
+    ATTR_LISTING_TYPE,
     CONF_ACCOUNT_NAME,
     CONF_SEARCH_QUERY,
+    CONF_SITE,
+    CONF_UPDATE_INTERVAL,
     DOMAIN,
 )
 from .coordinator import (
@@ -38,6 +43,14 @@ async def async_setup_entry(
     account_name = entry_data["account_name"]
 
     entities: list[SensorEntity] = []
+
+    # Add API usage sensor (one per account)
+    entities.append(
+        EbayAPIUsageSensor(
+            api=entry_data["api"],
+            account_name=account_name,
+        )
+    )
 
     # Add base sensors (bids, watchlist, purchases)
     entities.append(
@@ -103,9 +116,7 @@ class EbayBidsSensor(CoordinatorEntity, SensorEntity):
         return {
             ATTR_ITEM_COUNT: len(self.coordinator.data),
             ATTR_ITEMS: self.coordinator.data,
-            ATTR_LAST_UPDATED: self.coordinator.last_update_success_time.isoformat()
-            if self.coordinator.last_update_success_time
-            else None,
+            ATTR_LAST_UPDATED: dt_util.now().isoformat(),
         }
 
 
@@ -139,9 +150,7 @@ class EbayWatchlistSensor(CoordinatorEntity, SensorEntity):
         return {
             ATTR_ITEM_COUNT: len(self.coordinator.data),
             ATTR_ITEMS: self.coordinator.data,
-            ATTR_LAST_UPDATED: self.coordinator.last_update_success_time.isoformat()
-            if self.coordinator.last_update_success_time
-            else None,
+            ATTR_LAST_UPDATED: dt_util.now().isoformat(),
         }
 
 
@@ -175,9 +184,7 @@ class EbayPurchasesSensor(CoordinatorEntity, SensorEntity):
         return {
             ATTR_ITEM_COUNT: len(self.coordinator.data),
             ATTR_ITEMS: self.coordinator.data,
-            ATTR_LAST_UPDATED: self.coordinator.last_update_success_time.isoformat()
-            if self.coordinator.last_update_success_time
-            else None,
+            ATTR_LAST_UPDATED: dt_util.now().isoformat(),
         }
 
 
@@ -209,18 +216,106 @@ class EbaySearchSensor(CoordinatorEntity, SensorEntity):
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
         """Return additional state attributes."""
-        if not self.coordinator.data:
-            return {
-                "search_query": self._search_query,
-                "search_id": self._search_id,
-            }
-
+        items = self.coordinator.data if self.coordinator.data else []
+        
+        # Count auction vs buy it now
+        auction_count = 0
+        buy_now_count = 0
+        for item in items:
+            listing_type = item.get(ATTR_LISTING_TYPE, "")
+            if listing_type == "Auction":
+                auction_count += 1
+            elif listing_type in ["FixedPrice", "Buy It Now"]:
+                buy_now_count += 1
+        
+        # Get config values
+        config = self.coordinator.search_config
+        site = config.get(CONF_SITE, "uk")
+        update_interval = config.get(CONF_UPDATE_INTERVAL, 15)
+        
+        # Limit items to prevent database size issues (16KB limit)
+        # Only store first 10 items in attributes to stay under limit
+        limited_items = items[:10] if len(items) > 10 else items
+        
         return {
             "search_query": self._search_query,
             "search_id": self._search_id,
-            ATTR_ITEM_COUNT: len(self.coordinator.data),
-            ATTR_ITEMS: self.coordinator.data,
-            ATTR_LAST_UPDATED: self.coordinator.last_update_success_time.isoformat()
-            if self.coordinator.last_update_success_time
-            else None,
+            "site": site,
+            "update_interval": update_interval,
+            ATTR_ITEM_COUNT: len(items),
+            "auction_count": auction_count,
+            "buy_now_count": buy_now_count,
+            ATTR_ITEMS: limited_items,
+            "total_results": len(items),
+            ATTR_LAST_UPDATED: dt_util.now().isoformat(),
         }
+
+
+class EbayAPIUsageSensor(SensorEntity):
+    """Sensor showing API rate limit usage from eBay Analytics API."""
+
+    _attr_icon = "mdi:api"
+
+    def __init__(self, api, account_name: str) -> None:
+        """Initialize the API usage sensor."""
+        self._api = api
+        self._account_name = account_name
+        self._attr_name = f"eBay {account_name} API Usage"
+        self._attr_unique_id = f"ebay_{account_name.lower().replace(' ', '_')}_api_usage"
+        self._usage_data = None
+
+    @property
+    def native_value(self) -> str:
+        """Return the state of the sensor."""
+        if not self._usage_data:
+            return "Unknown"
+        
+        # Show Browse API usage percentage if available
+        analytics = self._usage_data.get("ebay_analytics", {})
+        if analytics and "browse" in analytics:
+            return f"{analytics['browse']['usage_percent']}%"
+        
+        # Fallback to local tracking
+        local = self._usage_data.get("local_tracking", {})
+        if "browse" in local:
+            return f"{local['browse']['count']} calls"
+        
+        return "No data"
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return additional state attributes."""
+        if not self._usage_data:
+            return {}
+        
+        attrs = {}
+        
+        # eBay Analytics (actual usage from eBay)
+        analytics = self._usage_data.get("ebay_analytics")
+        if analytics:
+            attrs["ebay_analytics"] = analytics
+            
+            # Add convenient top-level attributes
+            if "browse" in analytics:
+                attrs["browse_limit"] = analytics["browse"]["limit"]
+                attrs["browse_used"] = analytics["browse"]["used"]
+                attrs["browse_remaining"] = analytics["browse"]["remaining"]
+                attrs["browse_usage_percent"] = analytics["browse"]["usage_percent"]
+                attrs["browse_reset"] = analytics["browse"]["reset"]
+        
+        # Local tracking (our counts)
+        local = self._usage_data.get("local_tracking")
+        if local:
+            attrs["local_tracking"] = local
+        
+        # Error if any
+        if self._usage_data.get("error"):
+            attrs["error"] = self._usage_data["error"]
+        
+        attrs[ATTR_LAST_UPDATED] = dt_util.now().isoformat()
+        
+        return attrs
+
+    async def async_update(self) -> None:
+        """Fetch new state data for the sensor."""
+        self._usage_data = await self._api.get_rate_limit_usage()
