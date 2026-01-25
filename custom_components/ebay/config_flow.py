@@ -131,7 +131,7 @@ class EbayOptionsFlowHandler(config_entries.OptionsFlow):
 
     def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
         """Initialize options flow."""
-        self.config_entry = config_entry
+        self._config_entry = config_entry
         self._searches: dict[str, dict[str, Any]] = {}
         self._current_search_id: str | None = None
         self._search_action: str | None = None
@@ -147,7 +147,7 @@ class EbayOptionsFlowHandler(config_entries.OptionsFlow):
     ) -> FlowResult:
         """Show list of searches with add/edit/delete options."""
         # Load current searches
-        store = self.hass.data[DOMAIN][self.config_entry.entry_id]["store"]
+        store = self.hass.data[DOMAIN][self._config_entry.entry_id]["store"]
         self._searches = await store.async_load() or {}
 
         if user_input is not None:
@@ -182,7 +182,7 @@ class EbayOptionsFlowHandler(config_entries.OptionsFlow):
             step_id="search_list",
             data_schema=data_schema,
             description_placeholders={
-                "account_name": self.config_entry.data[CONF_ACCOUNT_NAME],
+                "account_name": self._config_entry.data[CONF_ACCOUNT_NAME],
                 "search_count": len(self._searches),
             },
         )
@@ -223,11 +223,11 @@ class EbayOptionsFlowHandler(config_entries.OptionsFlow):
 
                 # Save to storage
                 self._searches[search_id] = search_config
-                store = self.hass.data[DOMAIN][self.config_entry.entry_id]["store"]
+                store = self.hass.data[DOMAIN][self._config_entry.entry_id]["store"]
                 await store.async_save(self._searches)
 
                 # Reload the integration to create/update coordinators
-                await self.hass.config_entries.async_reload(self.config_entry.entry_id)
+                await self.hass.config_entries.async_reload(self._config_entry.entry_id)
 
                 return self.async_create_entry(title="", data={})
 
@@ -291,11 +291,11 @@ class EbayOptionsFlowHandler(config_entries.OptionsFlow):
                 self._searches.pop(search_id, None)
 
                 # Save to storage
-                store = self.hass.data[DOMAIN][self.config_entry.entry_id]["store"]
+                store = self.hass.data[DOMAIN][self._config_entry.entry_id]["store"]
                 await store.async_save(self._searches)
 
                 # Reload integration to remove coordinator
-                await self.hass.config_entries.async_reload(self.config_entry.entry_id)
+                await self.hass.config_entries.async_reload(self._config_entry.entry_id)
 
             return self.async_create_entry(title="", data={})
 
