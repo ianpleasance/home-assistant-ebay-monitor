@@ -285,15 +285,12 @@ async def _async_register_services(hass: HomeAssistant) -> None:
     async def create_search(call: ServiceCall) -> None:
         """Create a new search."""
         account = call.data[ATTR_ACCOUNT]
-        
         # Find the entry for this account
         for entry_id, data in hass.data[DOMAIN].items():
             if data["account_name"] == account:
                 import uuid
                 from homeassistant.helpers.entity_platform import async_get_platforms
-                
                 search_id = str(uuid.uuid4())
-                
                 search_config = {
                     CONF_SEARCH_QUERY: call.data[CONF_SEARCH_QUERY],
                     CONF_SITE: call.data[CONF_SITE],
@@ -305,94 +302,62 @@ async def _async_register_services(hass: HomeAssistant) -> None:
                         CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL
                     ),
                 }
-                
                 # Create coordinator
-                await _create_search_coordinator(
-                    hass, 
+                coordinator = await _create_search_coordinator(
+                    hass,
                     hass.config_entries.async_get_entry(entry_id),
                     search_id,
                     search_config
                 )
-                
                 # Save to storage
                 searches = await data["store"].async_load() or {}
                 searches[search_id] = search_config
                 await data["store"].async_save(searches)
-                
                 # Create the entity dynamically
                 # Find the sensor platform for this entry
                 platforms = async_get_platforms(hass, DOMAIN)
                 for platform in platforms:
                     if platform.config_entry.entry_id == entry_id and platform.domain == "sensor":
                         # Import here to avoid circular dependency
-                        from .sensor import EbaySearchSensor
-                        
-                        # Create the new sensor
+                        from .sensor import EbaySearchSensor, EbaySearchChunkSensor, CHUNK_SIZE
+                        # Create the new main sensor
                         new_sensor = EbaySearchSensor(
-                            coordinator=data["searches"][search_id]["coordinator"],
+                            coordinator=coordinator,
                             account_name=data["account_name"],
                             search_id=search_id,
                             search_query=search_config[CONF_SEARCH_QUERY],
                         )
-                        
-                        # Add it to the platform
+                        # Add main sensor to the platform
                         await platform.async_add_entities([new_sensor])
                         _LOGGER.info(f"Created search {search_id} and entity for account {account}")
+                        
+                        # Now create chunk sensors if there's data
+                        items = coordinator.data if coordinator.data else []
+                        if items:
+                            chunk_count = (len(items) + CHUNK_SIZE - 1) // CHUNK_SIZE
+                            chunk_entities = []
+                            
+                            for chunk_num in range(1, chunk_count + 1):
+                                chunk_entities.append(
+                                    EbaySearchChunkSensor(
+                                        coordinator=coordinator,
+                                        account_name=data["account_name"],
+                                        search_id=search_id,
+                                        search_query=search_config[CONF_SEARCH_QUERY],
+                                        chunk_number=chunk_num,
+                                    )
+                                )
+                            
+                            if chunk_entities:
+                                await platform.async_add_entities(chunk_entities)
+                                _LOGGER.info(
+                                    f"Created {len(chunk_entities)} chunk sensors for search {search_id}"
+                                )
+                        
                         return
-                
                 _LOGGER.info(f"Created search {search_id} for account {account}")
                 return
-    
-    async def update_search(call: ServiceCall) -> None:
-        """Update an existing search."""
-        search_id = call.data[ATTR_SEARCH_ID]
-        
-        # Find the entry containing this search
-        for entry_id, data in hass.data[DOMAIN].items():
-            if search_id in data["searches"]:
-                search_data = data["searches"][search_id]
-                search_config = search_data["config"]
-                coordinator = search_data["coordinator"]
-                
-                # Track if we need to update the interval
-                interval_changed = False
-                
-                # Update config with new values
-                for key in [
-                    CONF_SEARCH_QUERY,
-                    CONF_SITE,
-                    CONF_CATEGORY_ID,
-                    CONF_MIN_PRICE,
-                    CONF_MAX_PRICE,
-                    CONF_LISTING_TYPE,
-                ]:
-                    if key in call.data:
-                        search_config[key] = call.data[key]
-                
-                # Handle update_interval separately
-                if CONF_UPDATE_INTERVAL in call.data:
-                    new_interval = call.data[CONF_UPDATE_INTERVAL]
-                    if search_config.get(CONF_UPDATE_INTERVAL) != new_interval:
-                        search_config[CONF_UPDATE_INTERVAL] = new_interval
-                        interval_changed = True
-                        # Update the coordinator's update_interval
-                        coordinator.update_interval = timedelta(minutes=new_interval)
-                        _LOGGER.info(f"Updated search {search_id} interval to {new_interval} minutes")
-                
-                # Update the coordinator's search_config so next refresh uses new params
-                coordinator.search_config = search_config
-                
-                # Force a refresh with the new configuration
-                await coordinator.async_refresh()
-                
-                # Save to storage
-                searches = await data["store"].async_load() or {}
-                searches[search_id] = search_config
-                await data["store"].async_save(searches)
-                
-                _LOGGER.info(f"Updated search {search_id}")
-                return
-    
+
     async def delete_search(call: ServiceCall) -> None:
         """Delete a search."""
         search_id = call.data[ATTR_SEARCH_ID]
@@ -435,6 +400,101 @@ async def _async_register_services(hass: HomeAssistant) -> None:
                 await data["store"].async_save(searches)
             
                 _LOGGER.info(f"Deleted search {search_id} and its chunk sensors")
+                return
+
+    async def update_search(call: ServiceCall) -> None:
+        """Update an existing search."""
+        search_id = call.data[ATTR_SEARCH_ID]
+        # Find the entry containing this search
+        for entry_id, data in hass.data[DOMAIN].items():
+            if search_id in data["searches"]:
+                from homeassistant.helpers.entity_platform import async_get_platforms
+                from .sensor import EbaySearchChunkSensor, CHUNK_SIZE
+                
+                search_data = data["searches"][search_id]
+                search_config = search_data["config"]
+                coordinator = search_data["coordinator"]
+                
+                # Track if we need to update the interval
+                interval_changed = False
+                
+                # Update config with new values
+                for key in [
+                    CONF_SEARCH_QUERY,
+                    CONF_SITE,
+                    CONF_CATEGORY_ID,
+                    CONF_MIN_PRICE,
+                    CONF_MAX_PRICE,
+                    CONF_LISTING_TYPE,
+                ]:
+                    if key in call.data:
+                        search_config[key] = call.data[key]
+                
+                # Handle update_interval separately
+                if CONF_UPDATE_INTERVAL in call.data:
+                    new_interval = call.data[CONF_UPDATE_INTERVAL]
+                    if search_config.get(CONF_UPDATE_INTERVAL) != new_interval:
+                        search_config[CONF_UPDATE_INTERVAL] = new_interval
+                        interval_changed = True
+                        # Update the coordinator's update_interval
+                        coordinator.update_interval = timedelta(minutes=new_interval)
+                        _LOGGER.info(f"Updated search {search_id} interval to {new_interval} minutes")
+                
+                # Update the coordinator's search_config so next refresh uses new params
+                coordinator.search_config = search_config
+                
+                # Get old chunk count
+                old_items = coordinator.data if coordinator.data else []
+                old_chunk_count = (len(old_items) + CHUNK_SIZE - 1) // CHUNK_SIZE if old_items else 0
+                
+                # Force a refresh with the new configuration
+                await coordinator.async_refresh()
+                
+                # Get new chunk count
+                new_items = coordinator.data if coordinator.data else []
+                new_chunk_count = (len(new_items) + CHUNK_SIZE - 1) // CHUNK_SIZE if new_items else 0
+                
+                # Handle chunk sensor changes if count changed
+                if new_chunk_count != old_chunk_count:
+                    account_name = data["account_name"]
+                    entity_registry = er.async_get(hass)
+                    
+                    # If we have fewer chunks now, remove excess chunk sensors
+                    if new_chunk_count < old_chunk_count:
+                        for chunk_num in range(new_chunk_count + 1, old_chunk_count + 1):
+                            chunk_unique_id = f"ebay_{account_name}_search_{search_id}_chunk_{chunk_num}"
+                            entity_id = entity_registry.async_get_entity_id("sensor", DOMAIN, chunk_unique_id)
+                            if entity_id:
+                                entity_registry.async_remove(entity_id)
+                                _LOGGER.info(f"Removed excess chunk sensor {entity_id}")
+                    
+                    # If we have more chunks now, add new chunk sensors
+                    elif new_chunk_count > old_chunk_count:
+                        platforms = async_get_platforms(hass, DOMAIN)
+                        for platform in platforms:
+                            if platform.config_entry.entry_id == entry_id and platform.domain == "sensor":
+                                new_chunks = []
+                                for chunk_num in range(old_chunk_count + 1, new_chunk_count + 1):
+                                    new_chunks.append(
+                                        EbaySearchChunkSensor(
+                                            coordinator=coordinator,
+                                            account_name=account_name,
+                                            search_id=search_id,
+                                            search_query=search_config[CONF_SEARCH_QUERY],
+                                            chunk_number=chunk_num,
+                                        )
+                                    )
+                                if new_chunks:
+                                    await platform.async_add_entities(new_chunks)
+                                    _LOGGER.info(f"Added {len(new_chunks)} new chunk sensors")
+                                break
+
+                # Save to storage
+                searches = await data["store"].async_load() or {}
+                searches[search_id] = search_config
+                await data["store"].async_save(searches)
+                
+                _LOGGER.info(f"Updated search {search_id}")
                 return
 
     async def get_rate_limits(call: ServiceCall) -> None:
