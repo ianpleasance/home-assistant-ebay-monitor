@@ -459,7 +459,7 @@ async def _async_register_services(hass: HomeAssistant) -> None:
                 _LOGGER.info("")
             
             _LOGGER.info("Standard eBay Production Limits (for reference):")
-            _LOGGER.info("  Finding API: 5,000 calls/day")
+            _LOGGER.info("  Browse API: 5,000 calls/day")
             _LOGGER.info("  Trading API: varies by call (typically 1,500-5,000/day)")
             _LOGGER.info("  Shopping API: 5,000 calls/day")
             _LOGGER.info("")
