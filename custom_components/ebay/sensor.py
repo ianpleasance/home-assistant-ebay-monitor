@@ -513,13 +513,13 @@ class EbaySearchSensor(CoordinatorEntity, SensorEntity):
         chunk_count = (item_count + CHUNK_SIZE - 1) // CHUNK_SIZE
         
         # Generate chunk sensor IDs (sanitize search query for entity ID)
-        sanitized_query = self._search_query.lower().replace(' ', '_')[:30]  # Limit length
+        sanitized_query = self._search_query.lower().replace(' ', '_')
         chunk_sensors = []
         for i in range(1, chunk_count + 1):
             chunk_sensors.append(
-                f"sensor.ebay_{self._account_name.lower().replace(' ', '_')}_search_{self._search_id[:8]}_chunk_{i}"
+                f"sensor.ebay_{self._account_name.lower().replace(' ', '_')}_search_{sanitized_query}_chunk_{i}"
             )
-        
+
         return {
             "search_query": self._search_query,
             "search_id": self._search_id,

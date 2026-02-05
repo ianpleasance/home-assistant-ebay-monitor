@@ -396,35 +396,47 @@ async def _async_register_services(hass: HomeAssistant) -> None:
     async def delete_search(call: ServiceCall) -> None:
         """Delete a search."""
         search_id = call.data[ATTR_SEARCH_ID]
-        
         # Find and remove the search
         for entry_id, data in hass.data[DOMAIN].items():
             if search_id in data["searches"]:
                 # Build unique_id to find the entity
                 account_name = data["account_name"]
                 unique_id = f"ebay_{account_name}_search_{search_id}"
-                
-                # Remove from entity registry using unique_id
+            
+                # Remove main search sensor from entity registry
                 entity_registry = er.async_get(hass)
                 entity_id = entity_registry.async_get_entity_id("sensor", DOMAIN, unique_id)
-                
                 if entity_id:
                     entity_registry.async_remove(entity_id)
                     _LOGGER.info(f"Removed entity {entity_id} (unique_id: {unique_id})")
                 else:
                     _LOGGER.warning(f"Entity with unique_id {unique_id} not found in registry")
-                
+            
+                # Remove all chunk sensors for this search
+                # Find all chunks by searching for entities with pattern: ebay_{account}_search_{search_id}_chunk_*
+                chunk_prefix = f"ebay_{account_name}_search_{search_id}_chunk_"
+                removed_chunks = 0
+                for entity in list(entity_registry.entities.values()):
+                    if entity.domain == "sensor" and entity.platform == DOMAIN:
+                        if entity.unique_id and entity.unique_id.startswith(chunk_prefix):
+                            entity_registry.async_remove(entity.entity_id)
+                            removed_chunks += 1
+                            _LOGGER.info(f"Removed chunk entity {entity.entity_id} (unique_id: {entity.unique_id})")
+            
+                if removed_chunks > 0:
+                    _LOGGER.info(f"Removed {removed_chunks} chunk sensors for search {search_id}")
+            
                 # Remove from runtime data
                 data["searches"].pop(search_id)
-                
+            
                 # Save to storage
                 searches = await data["store"].async_load() or {}
                 searches.pop(search_id, None)
                 await data["store"].async_save(searches)
-                
-                _LOGGER.info(f"Deleted search {search_id}")
+            
+                _LOGGER.info(f"Deleted search {search_id} and its chunk sensors")
                 return
-    
+
     async def get_rate_limits(call: ServiceCall) -> None:
         """Get API call tracking information."""
         account = call.data.get(ATTR_ACCOUNT)
