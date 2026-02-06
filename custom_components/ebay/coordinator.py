@@ -565,7 +565,9 @@ class EbaySearchCoordinator(DataUpdateCoordinator):
             self._check_new_items(results)
 
             # Update previous item IDs
-            self._previous_item_ids = {item["item_id"] for item in results}
+            # self._previous_item_ids = {item["item_id"] for item in results}
+            current_ids = {item["item_id"] for item in results}
+            self._previous_item_ids.update(current_ids)
             
             # Save state to storage
             try:
