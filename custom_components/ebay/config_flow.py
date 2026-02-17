@@ -1,6 +1,8 @@
 """Config flow for eBay integration."""
 from __future__ import annotations
 
+import hashlib
+import json
 import logging
 from typing import Any
 
@@ -28,6 +30,59 @@ from .const import (
 )
 
 _LOGGER = logging.getLogger(__name__)
+
+
+def generate_search_id(search_query: str, search_config: dict) -> str:
+    """Generate search ID from query, with hash suffix if parameters are used.
+    
+    Args:
+        search_query: The search query string
+        search_config: Dictionary containing search parameters
+        
+    Returns:
+        str: Search ID (e.g., "mgb_roadster" or "mgb_roadster_a3f2e1")
+    """
+    # Start with the search query as base
+    base_id = search_query.lower().replace(" ", "_").replace("-", "_")
+    # Remove any special characters and limit length
+    base_id = "".join(c for c in base_id if c.isalnum() or c == "_")[:30]
+    
+    # Check if any parameters are explicitly specified (even if they match defaults)
+    # Simple rule: if you specify it, you get a hash
+    has_params = any([
+        search_config.get(CONF_SITE),
+        search_config.get(CONF_CATEGORY_ID),
+        search_config.get(CONF_MIN_PRICE),
+        search_config.get(CONF_MAX_PRICE),
+        search_config.get(CONF_LISTING_TYPE) and search_config.get(CONF_LISTING_TYPE) != "both",
+    ])
+    
+    # If no parameters, return just the query
+    if not has_params:
+        return base_id
+    
+    # Create hash from all specified parameters
+    params = {
+        CONF_SITE: search_config.get(CONF_SITE),
+        CONF_CATEGORY_ID: search_config.get(CONF_CATEGORY_ID),
+        CONF_MIN_PRICE: search_config.get(CONF_MIN_PRICE),
+        CONF_MAX_PRICE: search_config.get(CONF_MAX_PRICE),
+        CONF_LISTING_TYPE: search_config.get(CONF_LISTING_TYPE),
+    }
+    
+    # Remove None values for consistent hashing
+    params = {k: v for k, v in params.items() if v is not None}
+    
+    # Remove listing_type if it's "both" (the default)
+    if params.get(CONF_LISTING_TYPE) == "both":
+        params.pop(CONF_LISTING_TYPE, None)
+    
+    # Generate short hash (6 chars is enough for uniqueness)
+    stable_json = json.dumps(params, sort_keys=True)
+    hash_obj = hashlib.md5(stable_json.encode())
+    short_hash = hash_obj.hexdigest()[:6]
+    
+    return f"{base_id}_{short_hash}"
 
 
 class EbayConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
@@ -215,9 +270,11 @@ class EbayOptionsFlowHandler(config_entries.OptionsFlow):
                 }
 
                 if self._search_action == "add":
-                    # Generate new search ID
-                    import uuid
-                    search_id = str(uuid.uuid4())
+                    # Generate new search ID using query and parameters
+                    search_id = generate_search_id(
+                        user_input[CONF_SEARCH_QUERY],
+                        search_config
+                    )
                 else:
                     search_id = self._current_search_id
 

@@ -18,9 +18,14 @@ from .const import (
     ATTR_LAST_UPDATED,
     ATTR_LISTING_TYPE,
     CONF_ACCOUNT_NAME,
+    CONF_CATEGORY_ID,
+    CONF_LISTING_TYPE,
+    CONF_MAX_PRICE,
+    CONF_MIN_PRICE,
     CONF_SEARCH_QUERY,
     CONF_SITE,
     CONF_UPDATE_INTERVAL,
+    DEFAULT_SITE,
     DOMAIN,
 )
 from .coordinator import (
@@ -31,6 +36,29 @@ from .coordinator import (
 )
 
 _LOGGER = logging.getLogger(__name__)
+
+# Chunk configuration
+CHUNK_SIZE = 20  # Items per chunk sensor
+
+
+def _create_chunks(items: list[dict[str, Any]], chunk_size: int = CHUNK_SIZE) -> list[list[dict[str, Any]]]:
+    """Split items into chunks of specified size.
+    
+    Args:
+        items: List of items to chunk
+        chunk_size: Number of items per chunk
+        
+    Returns:
+        List of chunks, each containing up to chunk_size items
+    """
+    if not items:
+        return []
+    
+    chunks = []
+    for i in range(0, len(items), chunk_size):
+        chunks.append(items[i:i + chunk_size])
+    
+    return chunks
 
 
 async def async_setup_entry(
@@ -52,7 +80,7 @@ async def async_setup_entry(
         )
     )
 
-    # Add base sensors (bids, watchlist, purchases)
+    # Add main sensors (count only, no items)
     entities.append(
         EbayBidsSensor(
             coordinator=entry_data["bids_coordinator"],
@@ -72,7 +100,7 @@ async def async_setup_entry(
         )
     )
 
-    # Add search sensors
+    # Add main search sensors
     for search_id, search_data in entry_data["searches"].items():
         entities.append(
             EbaySearchSensor(
@@ -84,10 +112,86 @@ async def async_setup_entry(
         )
 
     async_add_entities(entities)
+    
+    # Now create chunk sensors based on current data
+    # We need to do this after coordinators have fetched data
+    
+    # Helper to create chunk sensors for a coordinator
+    async def create_chunks_for_coordinator(coordinator, sensor_type: str, extra_params: dict = None):
+        """Create chunk sensors for a coordinator's current data."""
+        await coordinator.async_refresh()  # Ensure we have data
+        
+        items = coordinator.data if coordinator.data else []
+        if not items:
+            return  # No chunks needed
+        
+        chunk_count = (len(items) + CHUNK_SIZE - 1) // CHUNK_SIZE
+        chunk_entities = []
+        
+        for chunk_num in range(1, chunk_count + 1):
+            if sensor_type == "bids":
+                chunk_entities.append(
+                    EbayBidsChunkSensor(
+                        coordinator=coordinator,
+                        account_name=account_name,
+                        chunk_number=chunk_num,
+                    )
+                )
+            elif sensor_type == "watchlist":
+                chunk_entities.append(
+                    EbayWatchlistChunkSensor(
+                        coordinator=coordinator,
+                        account_name=account_name,
+                        chunk_number=chunk_num,
+                    )
+                )
+            elif sensor_type == "purchases":
+                chunk_entities.append(
+                    EbayPurchasesChunkSensor(
+                        coordinator=coordinator,
+                        account_name=account_name,
+                        chunk_number=chunk_num,
+                    )
+                )
+            elif sensor_type == "search" and extra_params:
+                chunk_entities.append(
+                    EbaySearchChunkSensor(
+                        coordinator=coordinator,
+                        account_name=account_name,
+                        search_id=extra_params["search_id"],
+                        search_query=extra_params["search_query"],
+                        chunk_number=chunk_num,
+                    )
+                )
+        
+        if chunk_entities:
+            async_add_entities(chunk_entities)
+            _LOGGER.info(
+                "Created %d chunk sensors for %s %s",
+                len(chunk_entities),
+                account_name,
+                sensor_type
+            )
+    
+    # Create chunks for bids, watchlist, purchases
+    await create_chunks_for_coordinator(entry_data["bids_coordinator"], "bids")
+    await create_chunks_for_coordinator(entry_data["watchlist_coordinator"], "watchlist")
+    await create_chunks_for_coordinator(entry_data["purchases_coordinator"], "purchases")
+    
+    # Create chunks for each search
+    for search_id, search_data in entry_data["searches"].items():
+        await create_chunks_for_coordinator(
+            search_data["coordinator"],
+            "search",
+            {
+                "search_id": search_id,
+                "search_query": search_data["config"][CONF_SEARCH_QUERY],
+            }
+        )
 
 
 class EbayBidsSensor(CoordinatorEntity, SensorEntity):
-    """Sensor for eBay active bids."""
+    """Sensor for eBay active bids (main sensor - count only)."""
 
     _attr_icon = "mdi:gavel"
 
@@ -110,18 +214,78 @@ class EbayBidsSensor(CoordinatorEntity, SensorEntity):
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
         """Return additional state attributes."""
-        if not self.coordinator.data:
-            return {}
-
+        items = self.coordinator.data if self.coordinator.data else []
+        item_count = len(items)
+        chunk_count = (item_count + CHUNK_SIZE - 1) // CHUNK_SIZE  # Ceiling division
+        
+        # Generate list of chunk sensor entity IDs
+        chunk_sensors = []
+        for i in range(1, chunk_count + 1):
+            chunk_sensors.append(f"sensor.ebay_{self._account_name.lower().replace(' ', '_')}_active_bids_chunk_{i}")
+        
         return {
-            ATTR_ITEM_COUNT: len(self.coordinator.data),
-            ATTR_ITEMS: self.coordinator.data,
+            ATTR_ITEM_COUNT: item_count,
+            "chunk_count": chunk_count,
+            "chunk_sensors": chunk_sensors,
             ATTR_LAST_UPDATED: dt_util.now().isoformat(),
         }
 
 
+class EbayBidsChunkSensor(CoordinatorEntity, SensorEntity):
+    """Chunk sensor for eBay active bids (holds up to 20 items)."""
+
+    _attr_icon = "mdi:gavel"
+
+    def __init__(
+        self,
+        coordinator: EbayBidsCoordinator,
+        account_name: str,
+        chunk_number: int,
+    ) -> None:
+        """Initialize the chunk sensor."""
+        super().__init__(coordinator)
+        self._account_name = account_name
+        self._chunk_number = chunk_number
+        self._attr_name = f"eBay {account_name} Active Bids Chunk {chunk_number}"
+        self._attr_unique_id = f"ebay_{account_name}_active_bids_chunk_{chunk_number}"
+
+    @property
+    def native_value(self) -> int:
+        """Return the number of items in this chunk."""
+        items = self._get_chunk_items()
+        return len(items)
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return chunk items and metadata."""
+        items = self._get_chunk_items()
+        
+        # Calculate chunk range
+        start_idx = (self._chunk_number - 1) * CHUNK_SIZE
+        end_idx = start_idx + len(items) - 1
+        
+        return {
+            "chunk_number": self._chunk_number,
+            "chunk_start": start_idx + 1,  # 1-indexed for display
+            "chunk_end": end_idx + 1,  # 1-indexed for display
+            ATTR_ITEMS: items,
+            "parent_sensor": f"sensor.ebay_{self._account_name.lower().replace(' ', '_')}_active_bids",
+            ATTR_LAST_UPDATED: dt_util.now().isoformat(),
+        }
+    
+    def _get_chunk_items(self) -> list[dict[str, Any]]:
+        """Get the items for this chunk."""
+        if not self.coordinator.data:
+            return []
+        
+        start_idx = (self._chunk_number - 1) * CHUNK_SIZE
+        end_idx = start_idx + CHUNK_SIZE
+        
+        return self.coordinator.data[start_idx:end_idx]
+
+
 class EbayWatchlistSensor(CoordinatorEntity, SensorEntity):
-    """Sensor for eBay watchlist."""
+    """Sensor for eBay watchlist (main sensor - count only)."""
 
     _attr_icon = "mdi:eye"
 
@@ -144,18 +308,76 @@ class EbayWatchlistSensor(CoordinatorEntity, SensorEntity):
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
         """Return additional state attributes."""
-        if not self.coordinator.data:
-            return {}
-
+        items = self.coordinator.data if self.coordinator.data else []
+        item_count = len(items)
+        chunk_count = (item_count + CHUNK_SIZE - 1) // CHUNK_SIZE
+        
+        chunk_sensors = []
+        for i in range(1, chunk_count + 1):
+            chunk_sensors.append(f"sensor.ebay_{self._account_name.lower().replace(' ', '_')}_watchlist_chunk_{i}")
+        
         return {
-            ATTR_ITEM_COUNT: len(self.coordinator.data),
-            ATTR_ITEMS: self.coordinator.data,
+            ATTR_ITEM_COUNT: item_count,
+            "chunk_count": chunk_count,
+            "chunk_sensors": chunk_sensors,
             ATTR_LAST_UPDATED: dt_util.now().isoformat(),
         }
 
 
+class EbayWatchlistChunkSensor(CoordinatorEntity, SensorEntity):
+    """Chunk sensor for eBay watchlist (holds up to 20 items)."""
+
+    _attr_icon = "mdi:eye"
+
+    def __init__(
+        self,
+        coordinator: EbayWatchlistCoordinator,
+        account_name: str,
+        chunk_number: int,
+    ) -> None:
+        """Initialize the chunk sensor."""
+        super().__init__(coordinator)
+        self._account_name = account_name
+        self._chunk_number = chunk_number
+        self._attr_name = f"eBay {account_name} Watchlist Chunk {chunk_number}"
+        self._attr_unique_id = f"ebay_{account_name}_watchlist_chunk_{chunk_number}"
+
+    @property
+    def native_value(self) -> int:
+        """Return the number of items in this chunk."""
+        items = self._get_chunk_items()
+        return len(items)
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return chunk items and metadata."""
+        items = self._get_chunk_items()
+        
+        start_idx = (self._chunk_number - 1) * CHUNK_SIZE
+        end_idx = start_idx + len(items) - 1
+        
+        return {
+            "chunk_number": self._chunk_number,
+            "chunk_start": start_idx + 1,
+            "chunk_end": end_idx + 1,
+            ATTR_ITEMS: items,
+            "parent_sensor": f"sensor.ebay_{self._account_name.lower().replace(' ', '_')}_watchlist",
+            ATTR_LAST_UPDATED: dt_util.now().isoformat(),
+        }
+    
+    def _get_chunk_items(self) -> list[dict[str, Any]]:
+        """Get the items for this chunk."""
+        if not self.coordinator.data:
+            return []
+        
+        start_idx = (self._chunk_number - 1) * CHUNK_SIZE
+        end_idx = start_idx + CHUNK_SIZE
+        
+        return self.coordinator.data[start_idx:end_idx]
+
+
 class EbayPurchasesSensor(CoordinatorEntity, SensorEntity):
-    """Sensor for eBay purchases."""
+    """Sensor for eBay purchases (main sensor - count only)."""
 
     _attr_icon = "mdi:shopping"
 
@@ -178,18 +400,76 @@ class EbayPurchasesSensor(CoordinatorEntity, SensorEntity):
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
         """Return additional state attributes."""
-        if not self.coordinator.data:
-            return {}
-
+        items = self.coordinator.data if self.coordinator.data else []
+        item_count = len(items)
+        chunk_count = (item_count + CHUNK_SIZE - 1) // CHUNK_SIZE
+        
+        chunk_sensors = []
+        for i in range(1, chunk_count + 1):
+            chunk_sensors.append(f"sensor.ebay_{self._account_name.lower().replace(' ', '_')}_purchases_chunk_{i}")
+        
         return {
-            ATTR_ITEM_COUNT: len(self.coordinator.data),
-            ATTR_ITEMS: self.coordinator.data,
+            ATTR_ITEM_COUNT: item_count,
+            "chunk_count": chunk_count,
+            "chunk_sensors": chunk_sensors,
             ATTR_LAST_UPDATED: dt_util.now().isoformat(),
         }
 
 
+class EbayPurchasesChunkSensor(CoordinatorEntity, SensorEntity):
+    """Chunk sensor for eBay purchases (holds up to 20 items)."""
+
+    _attr_icon = "mdi:shopping"
+
+    def __init__(
+        self,
+        coordinator: EbayPurchasesCoordinator,
+        account_name: str,
+        chunk_number: int,
+    ) -> None:
+        """Initialize the chunk sensor."""
+        super().__init__(coordinator)
+        self._account_name = account_name
+        self._chunk_number = chunk_number
+        self._attr_name = f"eBay {account_name} Purchases Chunk {chunk_number}"
+        self._attr_unique_id = f"ebay_{account_name}_purchases_chunk_{chunk_number}"
+
+    @property
+    def native_value(self) -> int:
+        """Return the number of items in this chunk."""
+        items = self._get_chunk_items()
+        return len(items)
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return chunk items and metadata."""
+        items = self._get_chunk_items()
+        
+        start_idx = (self._chunk_number - 1) * CHUNK_SIZE
+        end_idx = start_idx + len(items) - 1
+        
+        return {
+            "chunk_number": self._chunk_number,
+            "chunk_start": start_idx + 1,
+            "chunk_end": end_idx + 1,
+            ATTR_ITEMS: items,
+            "parent_sensor": f"sensor.ebay_{self._account_name.lower().replace(' ', '_')}_purchases",
+            ATTR_LAST_UPDATED: dt_util.now().isoformat(),
+        }
+    
+    def _get_chunk_items(self) -> list[dict[str, Any]]:
+        """Get the items for this chunk."""
+        if not self.coordinator.data:
+            return []
+        
+        start_idx = (self._chunk_number - 1) * CHUNK_SIZE
+        end_idx = start_idx + CHUNK_SIZE
+        
+        return self.coordinator.data[start_idx:end_idx]
+
+
 class EbaySearchSensor(CoordinatorEntity, SensorEntity):
-    """Sensor for eBay search results."""
+    """Sensor for eBay search results (main sensor - count only)."""
 
     _attr_icon = "mdi:magnify"
 
@@ -205,7 +485,7 @@ class EbaySearchSensor(CoordinatorEntity, SensorEntity):
         self._account_name = account_name
         self._search_id = search_id
         self._search_query = search_query
-        self._attr_name = f"eBay {account_name} Search {search_query}"
+        self._attr_name = f"eBay {account_name} Search {search_id}"
         self._attr_unique_id = f"ebay_{account_name}_search_{search_id}"
 
     @property
@@ -217,6 +497,7 @@ class EbaySearchSensor(CoordinatorEntity, SensorEntity):
     def extra_state_attributes(self) -> dict[str, Any]:
         """Return additional state attributes."""
         items = self.coordinator.data if self.coordinator.data else []
+        item_count = len(items)
         
         # Count auction vs buy it now
         auction_count = 0
@@ -233,22 +514,93 @@ class EbaySearchSensor(CoordinatorEntity, SensorEntity):
         site = config.get(CONF_SITE, "uk")
         update_interval = config.get(CONF_UPDATE_INTERVAL, 15)
         
-        # Limit items to prevent database size issues (16KB limit)
-        # Only store first 10 items in attributes to stay under limit
-        limited_items = items[:10] if len(items) > 10 else items
+        # Calculate chunks
+        chunk_count = (item_count + CHUNK_SIZE - 1) // CHUNK_SIZE
+        
+        # Generate chunk sensor IDs using full search_id for accuracy
+        chunk_sensors = []
+        for i in range(1, chunk_count + 1):
+            chunk_sensors.append(
+                f"sensor.ebay_{self._account_name.lower().replace(' ', '_')}_search_{self._search_id}_chunk_{i}"
+            )
         
         return {
             "search_query": self._search_query,
             "search_id": self._search_id,
+            "search_config": {
+                CONF_SITE: config.get(CONF_SITE, DEFAULT_SITE),
+                CONF_CATEGORY_ID: config.get(CONF_CATEGORY_ID),
+                CONF_MIN_PRICE: config.get(CONF_MIN_PRICE),
+                CONF_MAX_PRICE: config.get(CONF_MAX_PRICE),
+                CONF_LISTING_TYPE: config.get(CONF_LISTING_TYPE),
+            },
             "site": site,
             "update_interval": update_interval,
-            ATTR_ITEM_COUNT: len(items),
+            ATTR_ITEM_COUNT: item_count,
             "auction_count": auction_count,
             "buy_now_count": buy_now_count,
-            ATTR_ITEMS: limited_items,
-            "total_results": len(items),
+            "chunk_count": chunk_count,
+            "chunk_sensors": chunk_sensors,
             ATTR_LAST_UPDATED: dt_util.now().isoformat(),
         }
+
+
+class EbaySearchChunkSensor(CoordinatorEntity, SensorEntity):
+    """Chunk sensor for eBay search results (holds up to 20 items)."""
+
+    _attr_icon = "mdi:magnify"
+
+    def __init__(
+        self,
+        coordinator: EbaySearchCoordinator,
+        account_name: str,
+        search_id: str,
+        search_query: str,
+        chunk_number: int,
+    ) -> None:
+        """Initialize the chunk sensor."""
+        super().__init__(coordinator)
+        self._account_name = account_name
+        self._search_id = search_id
+        self._search_query = search_query
+        self._chunk_number = chunk_number
+        self._attr_name = f"eBay {account_name} Search {search_id} Chunk {chunk_number}"
+        self._attr_unique_id = f"ebay_{account_name}_search_{search_id}_chunk_{chunk_number}"
+
+    @property
+    def native_value(self) -> int:
+        """Return the number of items in this chunk."""
+        items = self._get_chunk_items()
+        return len(items)
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return chunk items and metadata."""
+        items = self._get_chunk_items()
+        
+        start_idx = (self._chunk_number - 1) * CHUNK_SIZE
+        end_idx = start_idx + len(items) - 1
+        
+        return {
+            "chunk_number": self._chunk_number,
+            "chunk_start": start_idx + 1,
+            "chunk_end": end_idx + 1,
+            "search_query": self._search_query,
+            "search_id": self._search_id,
+            ATTR_ITEMS: items,
+            "parent_sensor": f"sensor.ebay_{self._account_name.lower().replace(' ', '_')}_search_{self._search_id}",
+            ATTR_LAST_UPDATED: dt_util.now().isoformat(),
+        }
+    
+    def _get_chunk_items(self) -> list[dict[str, Any]]:
+        """Get the items for this chunk."""
+        if not self.coordinator.data:
+            return []
+        
+        start_idx = (self._chunk_number - 1) * CHUNK_SIZE
+        end_idx = start_idx + CHUNK_SIZE
+        
+        return self.coordinator.data[start_idx:end_idx]
 
 
 class EbayAPIUsageSensor(SensorEntity):

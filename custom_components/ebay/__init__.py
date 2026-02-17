@@ -26,6 +26,7 @@ from .const import (
     CONF_UPDATE_INTERVAL,
     DEFAULT_BIDS_INTERVAL,
     DEFAULT_PURCHASES_INTERVAL,
+    DEFAULT_SITE,
     DEFAULT_UPDATE_INTERVAL,
     DEFAULT_WATCHLIST_INTERVAL,
     DOMAIN,
@@ -49,6 +50,7 @@ from .coordinator import (
     EbaySearchCoordinator,
     EbayWatchlistCoordinator,
 )
+from .config_flow import generate_search_id
 from .ebay_api import EbayAPI
 
 _LOGGER = logging.getLogger(__name__)
@@ -77,7 +79,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     )
     
     # Create storage for searches
-    store = Store(hass, STORAGE_VERSION, f"{STORAGE_KEY}_{entry.entry_id}")
+    # Use account_name for readable storage filename
+    store = Store(hass, STORAGE_VERSION, f"{STORAGE_KEY}_{account_name.lower().replace(' ', '_')}")
     searches_data = await store.async_load() or {}
     
     # Initialize coordinators
@@ -168,10 +171,12 @@ async def _create_search_coordinator(
     )
     
     # Use async_config_entry_first_refresh only during initial setup
-    # Otherwise use regular async_refresh
+    # For dynamically created searches, use async_refresh which waits for completion
     if is_setup:
         await coordinator.async_config_entry_first_refresh()
     else:
+        # For dynamically created searches, force immediate refresh and wait
+        # This ensures entity has data immediately after creation
         await coordinator.async_refresh()
     
     entry_data["searches"][search_id] = {
@@ -192,7 +197,8 @@ async def _async_register_services(hass: HomeAssistant) -> None:
         for entry_id, data in hass.data[DOMAIN].items():
             if account and data["account_name"] != account:
                 continue
-            await data["bids_coordinator"].async_request_refresh()
+            # Force immediate refresh regardless of interval
+            await data["bids_coordinator"].async_refresh()
     
     async def refresh_watchlist(call: ServiceCall) -> None:
         """Refresh watchlist for account(s)."""
@@ -201,7 +207,8 @@ async def _async_register_services(hass: HomeAssistant) -> None:
         for entry_id, data in hass.data[DOMAIN].items():
             if account and data["account_name"] != account:
                 continue
-            await data["watchlist_coordinator"].async_request_refresh()
+            # Force immediate refresh regardless of interval
+            await data["watchlist_coordinator"].async_refresh()
     
     async def refresh_purchases(call: ServiceCall) -> None:
         """Refresh purchases for account(s)."""
@@ -210,7 +217,8 @@ async def _async_register_services(hass: HomeAssistant) -> None:
         for entry_id, data in hass.data[DOMAIN].items():
             if account and data["account_name"] != account:
                 continue
-            await data["purchases_coordinator"].async_request_refresh()
+            # Force immediate refresh regardless of interval
+            await data["purchases_coordinator"].async_refresh()
     
     async def refresh_search(call: ServiceCall) -> None:
         """Refresh a specific search."""
@@ -218,7 +226,8 @@ async def _async_register_services(hass: HomeAssistant) -> None:
         
         for entry_id, data in hass.data[DOMAIN].items():
             if search_id in data["searches"]:
-                await data["searches"][search_id]["coordinator"].async_request_refresh()
+                # Force immediate refresh regardless of interval
+                await data["searches"][search_id]["coordinator"].async_refresh()
                 return
     
     async def refresh_account(call: ServiceCall) -> None:
@@ -228,13 +237,14 @@ async def _async_register_services(hass: HomeAssistant) -> None:
         for entry_id, data in hass.data[DOMAIN].items():
             if data["account_name"] == account:
                 tasks = [
-                    data["bids_coordinator"].async_request_refresh(),
-                    data["watchlist_coordinator"].async_request_refresh(),
-                    data["purchases_coordinator"].async_request_refresh(),
+                    # Force immediate refresh regardless of interval
+                    data["bids_coordinator"].async_refresh(),
+                    data["watchlist_coordinator"].async_refresh(),
+                    data["purchases_coordinator"].async_refresh(),
                 ]
                 
                 for search_data in data["searches"].values():
-                    tasks.append(search_data["coordinator"].async_request_refresh())
+                    tasks.append(search_data["coordinator"].async_refresh())
                 
                 await asyncio.gather(*tasks)
                 return
@@ -245,13 +255,14 @@ async def _async_register_services(hass: HomeAssistant) -> None:
         
         for entry_id, data in hass.data[DOMAIN].items():
             tasks.extend([
-                data["bids_coordinator"].async_request_refresh(),
-                data["watchlist_coordinator"].async_request_refresh(),
-                data["purchases_coordinator"].async_request_refresh(),
+                # Force immediate refresh regardless of interval
+                data["bids_coordinator"].async_refresh(),
+                data["watchlist_coordinator"].async_refresh(),
+                data["purchases_coordinator"].async_refresh(),
             ])
             
             for search_data in data["searches"].values():
-                tasks.append(search_data["coordinator"].async_request_refresh())
+                tasks.append(search_data["coordinator"].async_refresh())
         
         await asyncio.gather(*tasks)
     
@@ -289,22 +300,29 @@ async def _async_register_services(hass: HomeAssistant) -> None:
         # Find the entry for this account
         for entry_id, data in hass.data[DOMAIN].items():
             if data["account_name"] == account:
-                import uuid
                 from homeassistant.helpers.entity_platform import async_get_platforms
                 
-                search_id = str(uuid.uuid4())
-                
+                # Round prices to avoid floating point precision issues (500 becoming 499.98 etc)
+                min_price = call.data.get(CONF_MIN_PRICE)
+                max_price = call.data.get(CONF_MAX_PRICE)
+
                 search_config = {
                     CONF_SEARCH_QUERY: call.data[CONF_SEARCH_QUERY],
-                    CONF_SITE: call.data[CONF_SITE],
+                    CONF_SITE: call.data.get(CONF_SITE, DEFAULT_SITE),
                     CONF_CATEGORY_ID: call.data.get(CONF_CATEGORY_ID),
-                    CONF_MIN_PRICE: call.data.get(CONF_MIN_PRICE),
-                    CONF_MAX_PRICE: call.data.get(CONF_MAX_PRICE),
+                    CONF_MIN_PRICE: round(min_price, 2) if min_price is not None else None,
+                    CONF_MAX_PRICE: round(max_price, 2) if max_price is not None else None,
                     CONF_LISTING_TYPE: call.data.get(CONF_LISTING_TYPE, "both"),
                     CONF_UPDATE_INTERVAL: call.data.get(
                         CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL
                     ),
                 }
+                
+                # Generate search ID using query and parameters
+                search_id = generate_search_id(
+                    call.data[CONF_SEARCH_QUERY],
+                    search_config
+                )
                 
                 # Create coordinator
                 await _create_search_coordinator(
@@ -327,7 +345,7 @@ async def _async_register_services(hass: HomeAssistant) -> None:
                         # Import here to avoid circular dependency
                         from .sensor import EbaySearchSensor
                         
-                        # Create the new sensor
+                        # Create the new main sensor
                         new_sensor = EbaySearchSensor(
                             coordinator=data["searches"][search_id]["coordinator"],
                             account_name=data["account_name"],
@@ -335,9 +353,31 @@ async def _async_register_services(hass: HomeAssistant) -> None:
                             search_query=search_config[CONF_SEARCH_QUERY],
                         )
                         
-                        # Add it to the platform
-                        await platform.async_add_entities([new_sensor])
-                        _LOGGER.info(f"Created search {search_id} and entity for account {account}")
+                        # Also create chunk sensors based on current data
+                        from .sensor import EbaySearchChunkSensor, CHUNK_SIZE
+                        
+                        coordinator = data["searches"][search_id]["coordinator"]
+                        items = coordinator.data if coordinator.data else []
+                        chunk_count = (len(items) + CHUNK_SIZE - 1) // CHUNK_SIZE if items else 0
+                        
+                        chunk_sensors = []
+                        for chunk_num in range(1, chunk_count + 1):
+                            chunk_sensors.append(
+                                EbaySearchChunkSensor(
+                                    coordinator=coordinator,
+                                    account_name=data["account_name"],
+                                    search_id=search_id,
+                                    search_query=search_config[CONF_SEARCH_QUERY],
+                                    chunk_number=chunk_num,
+                                )
+                            )
+                        
+                        # Add main sensor and all chunk sensors to the platform
+                        entities_to_add = [new_sensor] + chunk_sensors
+                        await platform.async_add_entities(entities_to_add)
+                        _LOGGER.info(
+                            f"Created search {search_id} with {len(chunk_sensors)} chunk sensors for account {account}"
+                        )
                         return
                 
                 _LOGGER.info(f"Created search {search_id} for account {account}")
@@ -459,7 +499,7 @@ async def _async_register_services(hass: HomeAssistant) -> None:
                 _LOGGER.info("")
             
             _LOGGER.info("Standard eBay Production Limits (for reference):")
-            _LOGGER.info("  Finding API: 5,000 calls/day")
+            _LOGGER.info("  Browse API: 5,000 calls/day")
             _LOGGER.info("  Trading API: varies by call (typically 1,500-5,000/day)")
             _LOGGER.info("  Shopping API: 5,000 calls/day")
             _LOGGER.info("")

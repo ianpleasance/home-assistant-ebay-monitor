@@ -93,7 +93,6 @@ create_search:
     site:
       name: eBay Site
       description: Which eBay site to search
-      required: true
       default: "uk"
       example: "uk"
       selector:

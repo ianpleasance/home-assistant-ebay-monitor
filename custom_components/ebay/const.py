@@ -51,6 +51,7 @@ EVENT_OUTBID: Final = "ebay_outbid"
 EVENT_AUCTION_ENDING_SOON: Final = "ebay_auction_ending_soon"
 EVENT_AUCTION_WON: Final = "ebay_auction_won"
 EVENT_AUCTION_LOST: Final = "ebay_auction_lost"
+EVENT_NEW_PURCHASE: Final = "ebay_new_purchase"
 EVENT_ITEM_SHIPPED: Final = "ebay_item_shipped"
 EVENT_ITEM_DELIVERED: Final = "ebay_item_delivered"
 

@@ -37,12 +37,42 @@ from .const import (
 
 _LOGGER = logging.getLogger(__name__)
 
+
+def format_price(price_dict: dict[str, Any]) -> str:
+    """Format price with currency symbol and 2 decimal places.
+    
+    Args:
+        price_dict: Dictionary with 'value' and 'currency' keys
+        
+    Returns:
+        Formatted price string like '£3.20' or '$15.99'
+    """
+    if not price_dict or "value" not in price_dict or "currency" not in price_dict:
+        return "N/A"
+    
+    value = float(price_dict["value"])
+    currency = price_dict["currency"]
+    
+    # Currency symbol mapping
+    symbols = {
+        "GBP": "£",
+        "USD": "$",
+        "EUR": "€",
+        "AUD": "A$",
+        "CAD": "C$",
+    }
+    
+    symbol = symbols.get(currency, f"{currency} ")
+    
+    # Format with 2 decimal places
+    return f"{symbol}{value:.2f}"
+
+
 # eBay API Endpoints
-FINDING_API_URL = "https://svcs.ebay.com/services/search/FindingService/v1"  # Legacy
 SHOPPING_API_URL = "https://open.api.ebay.com/shopping"
 TRADING_API_URL = "https://api.ebay.com/ws/api.dll"
 ANALYTICS_API_URL = "https://api.ebay.com/developer/analytics/v1_beta/rate_limit"
-BROWSE_API_URL = "https://api.ebay.com/buy/browse/v1/item_summary/search"  # Modern replacement for Finding
+BROWSE_API_URL = "https://api.ebay.com/buy/browse/v1/item_summary/search"
 OAUTH_TOKEN_URL = "https://api.ebay.com/identity/v1/oauth2/token"
 
 # Cache Configuration
@@ -53,11 +83,6 @@ ENABLE_MY_EBAY_CACHE = True  # Set to False to disable caching
 # Cache duration in seconds (only used if ENABLE_MY_EBAY_CACHE is True)
 # Default: 30 seconds - enough for startup when coordinators refresh simultaneously
 MY_EBAY_CACHE_DURATION = 30
-
-# Search API Configuration
-# Set to True to use modern Browse API (better rate limits, OAuth 2.0)
-# Set to False to use legacy Finding API
-USE_BROWSE_API = True  # Browse API has better rate limits BUT only returns Buy It Now (no auctions)
 
 
 class EbayAPI:
@@ -91,10 +116,10 @@ class EbayAPI:
         # OAuth token for Browse API
         self._oauth_token = None
         self._oauth_token_expires = None
+        self._oauth_failed = False  # Track if OAuth authentication has failed
         
         # API call tracking
         self._api_calls = {
-            "finding": {"count": 0, "last_reset": datetime.now()},
             "browse": {"count": 0, "last_reset": datetime.now()},
             "trading": {"count": 0, "last_reset": datetime.now()},
             "shopping": {"count": 0, "last_reset": datetime.now()},
@@ -225,9 +250,9 @@ class EbayAPI:
         return result
 
     def _get_marketplace_id(self, site_id: str) -> str:
-        """Map Finding API site_id to Browse API marketplace_id.
+        """Map site_id to Browse API marketplace_id.
         
-        Finding API uses: EBAY-GB, EBAY-US, etc.
+        Site IDs use format: EBAY-GB, EBAY-US, etc.
         Browse API uses: EBAY_GB, EBAY_US, etc.
         UI sends: uk, us, de, etc. (lowercase)
         """
@@ -264,6 +289,7 @@ class EbayAPI:
         """Get OAuth 2.0 application token for Browse API.
         
         Returns cached token if valid, otherwise requests new one.
+        Falls back gracefully if OAuth credentials are invalid.
         """
         from datetime import timedelta
         
@@ -271,6 +297,10 @@ class EbayAPI:
         if (self._oauth_token and self._oauth_token_expires and 
             datetime.now() < self._oauth_token_expires):
             return self._oauth_token
+        
+        # If we previously failed to get OAuth token, don't keep trying
+        if hasattr(self, '_oauth_failed') and self._oauth_failed:
+            return None
         
         _LOGGER.debug("Requesting new OAuth token for Browse API")
         
@@ -303,6 +333,18 @@ class EbayAPI:
                         response.status,
                         error_text[:500]
                     )
+                    
+                    # Mark OAuth as failed so we don't keep retrying
+                    self._oauth_failed = True
+                    
+                    if response.status == 401:
+                        _LOGGER.warning(
+                            "OAuth authentication failed. Your eBay API credentials may not be "
+                            "configured for OAuth access. Search functionality requires OAuth/Browse API. "
+                            "To enable OAuth, ensure your eBay application has OAuth enabled in the "
+                            "eBay Developer Portal, or create a new application with OAuth support."
+                        )
+                    
                     return None
                 
                 token_data = await response.json()
@@ -321,6 +363,7 @@ class EbayAPI:
                 
         except Exception as err:
             _LOGGER.error("Error obtaining OAuth token: %s", err)
+            self._oauth_failed = True
             return None
 
     async def _get_authenticated_username(self) -> str | None:
@@ -361,18 +404,63 @@ class EbayAPI:
                     return None
 
                 xml_text = await response.text()
-                root = ET.fromstring(xml_text)
                 
-                # Extract UserID from response
+                # Log first 1000 chars of response for debugging
+                _LOGGER.debug("GetUser API response (first 1000 chars): %s", xml_text[:1000])
+                
+                root = ET.fromstring(xml_text)
                 namespace = {"ns": "urn:ebay:apis:eBLBaseComponents"}
+                
+                # Check for eBay API errors in the response
+                ack_elem = root.find(".//ns:Ack", namespace)
+                if ack_elem is not None and ack_elem.text == "Failure":
+                    # Extract error details
+                    error_code_elem = root.find(".//ns:Errors/ns:ErrorCode", namespace)
+                    error_msg_elem = root.find(".//ns:Errors/ns:LongMessage", namespace)
+                    
+                    error_code = error_code_elem.text if error_code_elem is not None else "unknown"
+                    error_msg = error_msg_elem.text if error_msg_elem is not None else "unknown error"
+                    
+                    if error_code == "931":
+                        _LOGGER.warning(
+                            "GetUser API failed - eBay Auth Token is invalid (Error 931). "
+                            "This may affect 'is_high_bidder' detection in bids. "
+                            "The token works for GetMyeBayBuying but not GetUser. "
+                            "You may need to regenerate your eBay Auth Token. "
+                            "Error: %s", error_msg
+                        )
+                    else:
+                        _LOGGER.error(
+                            "GetUser API returned eBay error %s: %s", 
+                            error_code, error_msg
+                        )
+                    
+                    return None
+                
+                # Extract UserID from response - try multiple approaches
+                
+                # Approach 1: With namespace
                 user_id_elem = root.find(".//ns:User/ns:UserID", namespace)
+                
+                # Approach 2: Without namespace (in case response doesn't use it)
+                if user_id_elem is None:
+                    user_id_elem = root.find(".//UserID")
+                
+                # Approach 3: Direct path
+                if user_id_elem is None:
+                    for elem in root.iter():
+                        if elem.tag.endswith("UserID") and elem.text:
+                            user_id_elem = elem
+                            break
                 
                 if user_id_elem is not None and user_id_elem.text:
                     self._ebay_username = user_id_elem.text
-                    _LOGGER.info(f"Authenticated eBay username: {self._ebay_username}")
+                    _LOGGER.info("Authenticated eBay username: %s", self._ebay_username)
                     return self._ebay_username
                 else:
                     _LOGGER.error("Could not extract UserID from GetUser response")
+                    _LOGGER.debug("Root tag: %s, All tags in response: %s", 
+                                root.tag, [elem.tag for elem in root.iter()][:20])
                     return None
                     
         except Exception as err:
@@ -441,8 +529,8 @@ class EbayAPI:
             
             # Price filter
             if min_price is not None or max_price is not None:
-                min_val = min_price if min_price is not None else "*"
-                max_val = max_price if max_price is not None else "*"
+                min_val = round(min_price, 2) if min_price is not None else "*"
+                max_val = round(max_price, 2) if max_price is not None else "*"
                 currency = "GBP" if "GB" in marketplace_id else "USD"
                 filters.append(f"price:[{min_val}..{max_val}]")
                 filters.append(f"priceCurrency:{currency}")
@@ -551,126 +639,17 @@ class EbayAPI:
             _LOGGER.error("Error searching eBay with Browse API: %s", err)
             return []
 
-    async def _search_items_finding(
-        self,
-        query: str,
-        site_id: str | None = None,
-        category_id: str | None = None,
-        min_price: float | None = None,
-        max_price: float | None = None,
-        listing_type: str | None = None,
-    ) -> list[dict[str, Any]]:
-        """Search for items using Finding API (legacy)."""
-        try:
-            params = {
-                "OPERATION-NAME": "findItemsAdvanced",
-                "SERVICE-VERSION": "1.0.0",
-                "SECURITY-APPNAME": self._app_id,
-                "RESPONSE-DATA-FORMAT": "JSON",
-                "keywords": query,
-            }
-
-            if category_id:
-                params["categoryId"] = category_id
-
-            # Add item filters
-            filter_index = 0
-            if min_price:
-                params[f"itemFilter({filter_index}).name"] = "MinPrice"
-                params[f"itemFilter({filter_index}).value"] = str(min_price)
-                filter_index += 1
-
-            if max_price:
-                params[f"itemFilter({filter_index}).name"] = "MaxPrice"
-                params[f"itemFilter({filter_index}).value"] = str(max_price)
-                filter_index += 1
-
-            if listing_type and listing_type != "All" and listing_type != "both":
-                params[f"itemFilter({filter_index}).name"] = "ListingType"
-                params[f"itemFilter({filter_index}).value"] = listing_type
-
-            _LOGGER.debug("eBay search query: %s, params: %s", query, params)
-
-            # Track API call
-            self._track_api_call("finding")
-
-            async with self._session.get(FINDING_API_URL, params=params) as response:
-                _LOGGER.debug(
-                    "eBay Finding API call - Status: %s, URL: %s",
-                    response.status,
-                    response.url
-                )
-                
-                response_text = await response.text()
-                
-                if response.status != 200:
-                    _LOGGER.error(
-                        "eBay Finding API error: Status %s, Response: %s, URL: %s",
-                        response.status,
-                        response_text[:500],  # First 500 chars
-                        response.url,
-                    )
-                    raise HomeAssistantError(f"eBay API error: {response.status}")
-
-                try:
-                    data = await response.json()
-                except Exception as json_err:
-                    _LOGGER.error("Failed to parse JSON response: %s. Response: %s", json_err, response_text[:500])
-                    return []
-                
-                # Check for API-level errors
-                if "errorMessage" in data:
-                    error_list = data.get("errorMessage", [])
-                    if error_list and isinstance(error_list, list):
-                        error_obj = error_list[0].get("error", [{}])[0] if error_list[0].get("error") else {}
-                        error_id = error_obj.get("errorId", [""])[0] if "errorId" in error_obj else ""
-                        error_msg = error_obj.get("message", [""])[0] if "message" in error_obj else ""
-                        
-                        # Check for rate limiting
-                        if error_id == "10001" or "rate" in error_msg.lower() or "exceeded" in error_msg.lower():
-                            _LOGGER.warning(
-                                "eBay API rate limit reached. Search will retry at next interval. "
-                                "Consider increasing update_interval to avoid this. Error: %s",
-                                error_msg
-                            )
-                            return []  # Return empty results, don't crash
-                        else:
-                            _LOGGER.error("eBay API returned error %s: %s", error_id, error_msg)
-                            return []
-                    else:
-                        _LOGGER.error("eBay API returned error: %s", data["errorMessage"])
-                        return []
-                
-                # Parse response
-                items = []
-                search_result = data.get("findItemsAdvancedResponse", [{}])[0].get("searchResult", [{}])[0]
-                
-                if search_result.get("@count", "0") != "0":
-                    item_list = search_result.get("item", [])
-                    for item in item_list:
-                        items.append(self._parse_finding_item(item))
-
-                _LOGGER.debug(
-                    "eBay search completed - Query: '%s', Results: %d items",
-                    query,
-                    len(items)
-                )
-                
-                return items
-
-        except Exception as err:
-            _LOGGER.error("Error searching eBay: %s", err)
-            return []
-
     async def get_my_ebay_buying(self) -> dict[str, list[dict[str, Any]]]:
-        """Get all buying activity (bids, watchlist, purchases) using Trading API."""
+        """Get all buying activity (bids, watchlist, purchases) using Trading API.
+        
+        Supports pagination to retrieve all items even with hundreds of entries.
+        """
         # Get the authenticated user's username if we don't have it yet
         if not self._ebay_username:
             await self._get_authenticated_username()
         
         # Cache results to avoid redundant API calls when
         # multiple coordinators refresh simultaneously
-        # Controlled by ENABLE_MY_EBAY_CACHE and MY_EBAY_CACHE_DURATION constants
         from datetime import datetime, timedelta
         
         if ENABLE_MY_EBAY_CACHE:
@@ -688,80 +667,130 @@ class EbayAPI:
         _LOGGER.debug("Fetching MyeBay buying data from Trading API (cache %s)", 
                      "disabled" if not ENABLE_MY_EBAY_CACHE else "miss or expired")
         
-        # Track API call
-        self._track_api_call("trading")
+        # Fetch all pages for each list type
+        all_bids = await self._fetch_my_ebay_list("BidList")
+        all_watchlist = await self._fetch_my_ebay_list("WatchList")
+        all_purchases = await self._fetch_my_ebay_list("WonList")
         
-        try:
-            # Build XML request
-            xml_request = f"""<?xml version="1.0" encoding="utf-8"?>
+        result = {
+            "bids": all_bids,
+            "watchlist": all_watchlist,
+            "purchases": all_purchases,
+        }
+        
+        _LOGGER.debug(
+            "eBay MyeBay data retrieved - Bids: %d, Watchlist: %d, Purchases: %d",
+            len(result["bids"]),
+            len(result["watchlist"]),
+            len(result["purchases"])
+        )
+        
+        # Update cache
+        if ENABLE_MY_EBAY_CACHE:
+            self._my_ebay_cache = result
+            self._my_ebay_cache_time = datetime.now()
+
+        return result
+
+    async def _fetch_my_ebay_list(self, list_type: str) -> list[dict[str, Any]]:
+        """Fetch all pages of a specific MyeBay list.
+        
+        Args:
+            list_type: One of "BidList", "WatchList", or "WonList"
+            
+        Returns:
+            Combined list of all items across all pages
+        """
+        all_items = []
+        page_number = 1
+        max_pages = 10  # Safety limit to prevent infinite loops
+        
+        while page_number <= max_pages:
+            try:
+                xml_request = f"""<?xml version="1.0" encoding="utf-8"?>
 <GetMyeBayBuyingRequest xmlns="urn:ebay:apis:eBLBaseComponents">
   <RequesterCredentials>
     <eBayAuthToken>{self._token}</eBayAuthToken>
   </RequesterCredentials>
-  <BidList>
+  <{list_type}>
     <Include>true</Include>
-  </BidList>
-  <WatchList>
-    <Include>true</Include>
-  </WatchList>
-  <WonList>
-    <Include>true</Include>
-  </WonList>
+    <Pagination>
+      <EntriesPerPage>200</EntriesPerPage>
+      <PageNumber>{page_number}</PageNumber>
+    </Pagination>
+  </{list_type}>
   <DetailLevel>ReturnAll</DetailLevel>
 </GetMyeBayBuyingRequest>"""
 
-            headers = {
-                "X-EBAY-API-SITEID": "3" if self._site_id == "EBAY-GB" else "0",
-                "X-EBAY-API-COMPATIBILITY-LEVEL": "967",
-                "X-EBAY-API-CALL-NAME": "GetMyeBayBuying",
-                "X-EBAY-API-APP-NAME": self._app_id,
-                "X-EBAY-API-DEV-NAME": self._dev_id,
-                "X-EBAY-API-CERT-NAME": self._cert_id,
-                "Content-Type": "text/xml",
-            }
-
-            async with self._session.post(
-                TRADING_API_URL, data=xml_request, headers=headers
-            ) as response:
-                _LOGGER.debug(
-                    "eBay Trading API call (GetMyeBayBuying) - Status: %s",
-                    response.status
-                )
-                
-                if response.status != 200:
-                    _LOGGER.error("eBay Trading API error: %s", response.status)
-                    return {"bids": [], "watchlist": [], "purchases": []}
-
-                xml_text = await response.text()
-                root = ET.fromstring(xml_text)
-
-                result = {
-                    "bids": self._parse_bid_list(root),
-                    "watchlist": self._parse_watch_list(root),
-                    "purchases": self._parse_won_list(root),
+                headers = {
+                    "X-EBAY-API-SITEID": "3" if self._site_id == "EBAY-GB" else "0",
+                    "X-EBAY-API-COMPATIBILITY-LEVEL": "967",
+                    "X-EBAY-API-CALL-NAME": "GetMyeBayBuying",
+                    "X-EBAY-API-APP-NAME": self._app_id,
+                    "X-EBAY-API-DEV-NAME": self._dev_id,
+                    "X-EBAY-API-CERT-NAME": self._cert_id,
+                    "Content-Type": "text/xml",
                 }
-                
-                # Username should already be set via GetUser API call
-                # at the start of this method
-                
-                _LOGGER.debug(
-                    "eBay MyeBay data retrieved - Bids: %d, Watchlist: %d, Purchases: %d",
-                    len(result["bids"]),
-                    len(result["watchlist"]),
-                    len(result["purchases"])
-                )
-                
-                # Update cache (only if caching is enabled)
-                if ENABLE_MY_EBAY_CACHE:
-                    from datetime import datetime
-                    self._my_ebay_cache = result
-                    self._my_ebay_cache_time = datetime.now()
 
-                return result
+                self._track_api_call("trading")
 
-        except Exception as err:
-            _LOGGER.error("Error fetching MyeBay data: %s", err)
-            return {"bids": [], "watchlist": [], "purchases": []}
+                async with self._session.post(
+                    TRADING_API_URL, data=xml_request, headers=headers
+                ) as response:
+                    if response.status != 200:
+                        _LOGGER.error("%s page %d error: Status %s", list_type, page_number, response.status)
+                        break
+
+                    xml_text = await response.text()
+                    root = ET.fromstring(xml_text)
+                    namespace = {"ns": "urn:ebay:apis:eBLBaseComponents"}
+                    
+                    # Parse items from this page
+                    if list_type == "BidList":
+                        page_items = self._parse_bid_list(root)
+                    elif list_type == "WatchList":
+                        page_items = self._parse_watch_list(root)
+                    else:  # WonList
+                        page_items = self._parse_won_list(root)
+                    
+                    all_items.extend(page_items)
+                    
+                    # Check pagination to see if there are more pages
+                    pagination_elem = root.find(f".//ns:{list_type}/ns:PaginationResult", namespace)
+                    if pagination_elem is not None:
+                        total_pages_elem = pagination_elem.find("ns:TotalNumberOfPages", namespace)
+                        total_entries_elem = pagination_elem.find("ns:TotalNumberOfEntries", namespace)
+                        
+                        if total_pages_elem is not None:
+                            total_pages = int(total_pages_elem.text)
+                            total_entries = total_entries_elem.text if total_entries_elem is not None else "unknown"
+                            
+                            _LOGGER.debug("%s page %d/%d - got %d items (total: %s)",
+                                        list_type, page_number, total_pages, len(page_items), total_entries)
+                            
+                            # Check if we need to fetch more pages
+                            if page_number >= total_pages:
+                                _LOGGER.info("%s - fetched all %d items across %d pages",
+                                           list_type, len(all_items), page_number)
+                                break
+                        else:
+                            # No total pages means this is the last page
+                            break
+                    else:
+                        # No pagination element means single page result
+                        break
+                    
+                    page_number += 1
+                    
+            except Exception as err:
+                _LOGGER.error("Error fetching %s page %d: %s", list_type, page_number, err)
+                break
+        
+        if page_number > max_pages:
+            _LOGGER.warning("%s hit page limit (%d pages). Got %d items but there may be more.",
+                          list_type, max_pages, len(all_items))
+        
+        return all_items
 
     async def get_item(self, item_id: str) -> dict[str, Any]:
         """Get detailed information about a specific item."""
@@ -871,7 +900,7 @@ class EbayAPI:
     def _parse_browse_item(self, item: dict) -> dict[str, Any]:
         """Parse a Browse API item summary.
         
-        Browse API has a cleaner structure than Finding API:
+        Browse API structure:
         - Direct field access (no array wrappers)
         - Price as object with value/currency
         - Seller as nested object
@@ -925,6 +954,9 @@ class EbayAPI:
                 ATTR_BID_COUNT: int(item.get("bidCount", "0")),
             }
             
+            # Add formatted price for display in automations/events
+            result["formatted_price"] = format_price(result[ATTR_CURRENT_PRICE])
+            
             # Add end time if it's an auction
             if "itemEndDate" in item:
                 result[ATTR_END_TIME] = item["itemEndDate"]
@@ -966,40 +998,6 @@ class EbayAPI:
             return "FixedPrice"
         else:
             return "Unknown"
-
-    def _parse_finding_item(self, item: dict) -> dict[str, Any]:
-        """Parse a Finding API item."""
-        seller_info = item.get("sellerInfo", [{}])[0]
-        selling_status = item.get("sellingStatus", [{}])[0]
-        listing_info = item.get("listingInfo", [{}])[0]
-        
-        result = {
-            ATTR_ITEM_ID: item.get("itemId", [""])[0],
-            ATTR_TITLE: item.get("title", [""])[0],
-            ATTR_SELLER_USERNAME: seller_info.get("sellerUserName", [""])[0],
-            ATTR_SELLER_FEEDBACK_SCORE: int(seller_info.get("feedbackScore", ["0"])[0]),
-            ATTR_SELLER_POSITIVE_PERCENT: float(seller_info.get("positiveFeedbackPercent", ["0"])[0]),
-            ATTR_CURRENT_PRICE: {
-                "value": float(selling_status.get("currentPrice", [{"__value__": "0"}])[0].get("__value__", "0")),
-                "currency": selling_status.get("currentPrice", [{"@currencyId": "GBP"}])[0].get("@currencyId", "GBP"),
-            },
-            ATTR_END_TIME: listing_info.get("endTime", [""])[0],
-            ATTR_ITEM_URL: item.get("viewItemURL", [""])[0],
-            ATTR_LISTING_TYPE: listing_info.get("listingType", [""])[0],
-            ATTR_BID_COUNT: int(selling_status.get("bidCount", ["0"])[0]),
-        }
-
-        # Add seller URL
-        if result[ATTR_SELLER_USERNAME]:
-            result[ATTR_SELLER_URL] = f"https://www.ebay.co.uk/usr/{result[ATTR_SELLER_USERNAME]}"
-
-        # Add image
-        if "pictureURLLarge" in item:
-            result[ATTR_IMAGE_URL] = item["pictureURLLarge"][0]
-        elif "galleryURL" in item:
-            result[ATTR_IMAGE_URL] = item["galleryURL"][0]
-
-        return result
 
     def _parse_bid_list(self, root: ET.Element) -> list[dict[str, Any]]:
         """Parse bid list from XML response."""
@@ -1063,11 +1061,29 @@ class EbayAPI:
 
         # Current price
         price_elem = item_elem.find("ns:SellingStatus/ns:CurrentPrice", namespace)
-        if price_elem is not None:
+        if price_elem is not None and price_elem.text:
             parsed[ATTR_CURRENT_PRICE] = {
                 "value": float(price_elem.text) if price_elem.text else 0.0,
                 "currency": price_elem.get("currencyID", "GBP"),
             }
+        else:
+            # Try alternative price paths for different item types
+            # Some items may have price in different locations
+            convert_price_elem = item_elem.find("ns:SellingStatus/ns:ConvertedCurrentPrice", namespace)
+            if convert_price_elem is not None and convert_price_elem.text:
+                parsed[ATTR_CURRENT_PRICE] = {
+                    "value": float(convert_price_elem.text),
+                    "currency": convert_price_elem.get("currencyID", "GBP"),
+                }
+            else:
+                # Default to 0 if no price found
+                parsed[ATTR_CURRENT_PRICE] = {
+                    "value": 0.0,
+                    "currency": "GBP",
+                }
+        
+        # Always add formatted price for consistency
+        parsed["formatted_price"] = format_price(parsed[ATTR_CURRENT_PRICE])
 
         # End time and time remaining
         end_time = get_text("ns:ListingDetails/ns:EndTime")
@@ -1180,14 +1196,82 @@ class EbayAPI:
             ATTR_TITLE: get_text("ns:Title"),
             ATTR_ITEM_URL: get_text("ns:ListingDetails/ns:ViewItemURL"),
         }
+        
+        # Debug: Log XML structure for first purchase to help diagnose
+        if not hasattr(self, '_logged_purchase_xml'):
+            self._logged_purchase_xml = True
+            _LOGGER.debug("=== PURCHASE XML STRUCTURE DEBUG ===")
+            _LOGGER.debug("Item ID: %s", parsed[ATTR_ITEM_ID])
+            _LOGGER.debug("Transaction element tags: %s", 
+                         [elem.tag.split('}')[-1] for elem in txn_elem.iter()][:30])
+            # Log all elements with 'Price' in their tag name
+            for elem in txn_elem.iter():
+                tag_name = elem.tag.split('}')[-1]
+                if 'Price' in tag_name or 'price' in tag_name:
+                    currency = elem.get('currencyID', 'N/A')
+                    _LOGGER.debug("Found price element: %s = %s (currency: %s)", 
+                                 tag_name, elem.text, currency)
+            _LOGGER.debug("=== END PURCHASE XML STRUCTURE DEBUG ===")
 
-        # Transaction price
+
+        # Transaction price - try multiple paths
+        # eBay can return prices in different locations depending on the transaction type
         price_elem = txn_elem.find("ns:TransactionPrice", namespace)
-        if price_elem is not None:
+        
+        if price_elem is not None and price_elem.text:
             parsed[ATTR_CURRENT_PRICE] = {
-                "value": float(price_elem.text) if price_elem.text else 0.0,
+                "value": float(price_elem.text),
                 "currency": price_elem.get("currencyID", "GBP"),
             }
+            _LOGGER.debug("Purchase price found at TransactionPrice: %s %s", 
+                         price_elem.text, price_elem.get("currencyID", "GBP"))
+        else:
+            # Try alternative paths
+            # 1. Try ActualPrice (sometimes used for best offers)
+            price_elem = txn_elem.find("ns:ActualPrice", namespace)
+            if price_elem is not None and price_elem.text:
+                parsed[ATTR_CURRENT_PRICE] = {
+                    "value": float(price_elem.text),
+                    "currency": price_elem.get("currencyID", "GBP"),
+                }
+                _LOGGER.debug("Purchase price found at ActualPrice: %s %s", 
+                             price_elem.text, price_elem.get("currencyID", "GBP"))
+            else:
+                # 2. Try FinalValueFee/Transaction/TotalPrice path
+                total_price_elem = txn_elem.find("ns:TotalPrice", namespace)
+                if total_price_elem is not None and total_price_elem.text:
+                    parsed[ATTR_CURRENT_PRICE] = {
+                        "value": float(total_price_elem.text),
+                        "currency": total_price_elem.get("currencyID", "GBP"),
+                    }
+                    _LOGGER.debug("Purchase price found at TotalPrice: %s %s", 
+                                 total_price_elem.text, total_price_elem.get("currencyID", "GBP"))
+                else:
+                    # 3. Try getting from the item's SellingStatus (fallback)
+                    price_elem = item_elem.find("ns:SellingStatus/ns:CurrentPrice", namespace)
+                    if price_elem is not None and price_elem.text:
+                        parsed[ATTR_CURRENT_PRICE] = {
+                            "value": float(price_elem.text),
+                            "currency": price_elem.get("currencyID", "GBP"),
+                        }
+                        _LOGGER.debug("Purchase price found at Item/SellingStatus/CurrentPrice: %s %s", 
+                                     price_elem.text, price_elem.get("currencyID", "GBP"))
+                    else:
+                        # Log warning if we couldn't find price anywhere
+                        item_id = get_text("ns:ItemID")
+                        _LOGGER.warning(
+                            "Could not find price for purchase item %s. "
+                            "Tried TransactionPrice, ActualPrice, TotalPrice, and CurrentPrice paths. "
+                            "Defaulting to £0.00",
+                            item_id
+                        )
+                        parsed[ATTR_CURRENT_PRICE] = {
+                            "value": 0.0,
+                            "currency": "GBP",
+                        }
+        
+        # Always add formatted price for consistency
+        parsed["formatted_price"] = format_price(parsed[ATTR_CURRENT_PRICE])
 
         # Seller info
         seller_username = get_text("ns:Seller/ns:UserID")
@@ -1253,12 +1337,49 @@ class EbayAPI:
         return parsed
 
     def _parse_shopping_item(self, item: dict) -> dict[str, Any]:
-        """Parse Shopping API item."""
-        return {
+        """Parse Shopping API item.
+        
+        Used by get_item() which is called to verify final auction status.
+        Must include:
+        - high_bidder_username: For won/lost determination
+        - listing_status: To verify auction actually ended (vs just removed from bids)
+        - end_time: For logging and verification
+        """
+        parsed = {
             ATTR_ITEM_ID: item.get("ItemID", ""),
             ATTR_TITLE: item.get("Title", ""),
             ATTR_DESCRIPTION: item.get("Description", ""),
         }
+        
+        # Extract listing status - CRITICAL for preventing false won/lost events
+        # Values: Active, Completed, Ended, Cancelled, etc.
+        # This prevents firing won/lost when item is just removed from bids (outbid, retracted, etc.)
+        parsed["listing_status"] = item.get("ListingStatus", "Unknown")
+        
+        # Extract end time for verification
+        end_time = item.get("EndTime", "")
+        if end_time:
+            parsed["end_time"] = end_time
+        
+        # Extract high bidder information for auction verification
+        # This is critical for determining if user won an ended auction
+        current_price = item.get("CurrentPrice", {})
+        if isinstance(current_price, dict):
+            parsed[ATTR_CURRENT_PRICE] = {
+                "value": float(current_price.get("Value", 0)),
+                "currency": current_price.get("CurrencyID", "GBP"),
+            }
+            parsed["formatted_price"] = format_price(parsed[ATTR_CURRENT_PRICE])
+        
+        # Get high bidder from SellingStatus
+        selling_status = item.get("SellingStatus", {})
+        if isinstance(selling_status, dict):
+            high_bidder = selling_status.get("HighBidder", {})
+            if isinstance(high_bidder, dict):
+                # This is the critical field for auction won/lost determination
+                parsed["high_bidder_username"] = high_bidder.get("UserID", "")
+                
+        return parsed
 
     def _calculate_time_remaining(self, end_time: str) -> str:
         """Calculate human-readable time remaining."""
