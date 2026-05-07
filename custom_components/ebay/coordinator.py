@@ -29,7 +29,8 @@ _LOGGER = logging.getLogger(__name__)
 STORAGE_VERSION = 1
 # Keep state for 60 days
 STATE_RETENTION_DAYS = 60
-
+# Should we truncate the list of previous new search item found results to save disk space
+TRUNCATE_SEARCH_ITEM_PREVIOUS = False
 
 def _clean_old_items(data: dict[str, Any], max_age_days: int = STATE_RETENTION_DAYS) -> dict[str, Any]:
     """Remove items older than max_age_days from stored data.
@@ -370,13 +371,30 @@ class EbayBidsCoordinator(DataUpdateCoordinator):
                                 {"account": self.account_name, "item": previous},
                             )
                     else:
-                        # Auction not yet ended or was cancelled/retracted
-                        _LOGGER.warning(
-                            "EbayBidsCoordinator: Item %s (%s) still shows status '%s' after grace period - "                            "not firing won/lost (outbid, bid retracted, cancelled, or eBay API delay)",
-                            item_id,
-                            previous.get("title", "Unknown"),
-                            listing_status,
-                        )
+                        # Auction API hasn't settled yet — re-queue for another check
+                        # rather than discarding. This handles last-minute bids where
+                        # the Shopping API takes 30-60s to reflect the final status.
+                        retries = previous.get("_verify_retries", 0) + 1
+                        if retries <= 5:
+                            _LOGGER.info(
+                                "EbayBidsCoordinator: Item %s (%s) still shows status '%s' — "                                "re-queuing for retry %d/5",
+                                item_id,
+                                previous.get("title", "Unknown"),
+                                listing_status,
+                                retries,
+                            )
+                            previous["_verify_retries"] = retries
+                            self._pending_ended[item_id] = {
+                                "item": previous,
+                                "missing_since_poll": self._poll_count,
+                            }
+                        else:
+                            _LOGGER.warning(
+                                "EbayBidsCoordinator: Item %s (%s) still shows status '%s' after "                                "5 retries — giving up. Likely outbid, bid retracted, or cancelled.",
+                                item_id,
+                                previous.get("title", "Unknown"),
+                                listing_status,
+                            )
                 else:
                     # GetSingleItem returned nothing - fall back to cached is_high_bidder
                     _LOGGER.warning(
@@ -741,13 +759,14 @@ class EbaySearchCoordinator(DataUpdateCoordinator):
             
             # Optional: Limit history size to prevent unbounded growth
             # Keep only the most recent 1000 items
-            #if len(self._previous_item_ids) > 1000:
-            #    # Convert to list, keep last 1000, convert back to set
-            #    self._previous_item_ids = set(list(self._previous_item_ids)[-1000:])
-            #    _LOGGER.debug(
-            #        "EbaySearchCoordinator: Trimmed item history to 1000 items for search '%s'",
-            #        self.search_id
-            #    )
+            if TRUNCATE_SEARCH_ITEM_PREVIOUS:
+                if len(self._previous_item_ids) > 1000:
+                    # Convert to list, keep last 1000, convert back to set
+                    self._previous_item_ids = set(list(self._previous_item_ids)[-1000:])
+                    _LOGGER.debug(
+                        "EbaySearchCoordinator: Trimmed item history to 1000 items for search '%s'",
+                        self.search_id
+                    )
             
             # Save state to storage
             try:
@@ -821,4 +840,3 @@ class EbaySearchCoordinator(DataUpdateCoordinator):
                         "item": item,
                     },
                 )
-

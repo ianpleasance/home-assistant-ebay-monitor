@@ -813,7 +813,7 @@ class EbayAPI:
                 "siteid": "3" if self._site_id == "EBAY-GB" else "0",
                 "version": "967",
                 "ItemID": item_id,
-                "IncludeSelector": "Details",
+                "IncludeSelector": "Details,SellingStatus",
             }
 
             async with self._session.get(SHOPPING_API_URL, params=params, timeout=_API_TIMEOUT) as response:
@@ -1419,4 +1419,3 @@ class EbayAPI:
         except Exception as err:
             _LOGGER.debug("Error calculating time remaining: %s", err)
             return "Unknown"
-
