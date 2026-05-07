@@ -7,6 +7,7 @@
   "integration_type": "service",
   "iot_class": "cloud_polling",
   "issue_tracker": "https://github.com/ianpleasance/ebay-integration/issues",
+  "homeassistant": "2024.1.0",
   "requirements": [],
-  "version": "2.2.1"
+  "version": "2.3.0"
 }
