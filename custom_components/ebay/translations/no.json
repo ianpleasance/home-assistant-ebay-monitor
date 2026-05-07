@@ -1,0 +1,81 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Legg til eBay-konto",
+        "description": "Skriv inn et beskrivende navn for denne eBay-kontoen (f.eks. 'Personlig', 'Bedrift'). Du kan legge til flere kontoer etter behov.",
+        "data": {
+          "account_name": "Kontonavn"
+        }
+      },
+      "credentials": {
+        "title": "eBay-utviklerlegitimasjon",
+        "description": "Skriv inn dine eBay API-legitimasjonsopplysninger fra eBay Developer Program.\n\nSlik finner du dem:\n1. Besøk https://developer.ebay.com/\n2. Logg inn og gå til 'Min konto' → 'Applikasjonsnøkler'\n3. Opprett en ny applikasjon (produksjonsmiljø)\n4. Kopier legitimasjonsopplysningene nedenfor",
+        "data": {
+          "app_id": "Applikasjons-ID (App ID / Klient-ID)",
+          "dev_id": "Utvikler-ID (Dev ID)",
+          "cert_id": "Sertifikat-ID (Cert ID / Klienthemmelighet)",
+          "token": "Brukerautentiseringstoken"
+        },
+        "data_description": {
+          "app_id": "Din applikasjonsidentifikator fra eBay Developer Portal",
+          "dev_id": "Identifikatoren for din utviklerkonto",
+          "cert_id": "Applikasjonssertifikatet/den hemmelige nøkkelen din",
+          "token": "OAuth-brukertoken — generer dette fra 'Brukertokens'-seksjonen"
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "Én eller flere legitimasjonsopplysninger mangler. Kontroller at alle feltene er fylt ut.",
+      "cannot_connect": "Kan ikke koble til eBay API. Kontroller at legitimasjonsopplysningene dine er riktige.",
+      "unknown": "Det oppstod en uventet feil. Prøv igjen."
+    },
+    "abort": {
+      "already_configured": "En konto med dette navnet er allerede konfigurert. Velg et annet navn."
+    }
+  },
+  "options": {
+    "step": {
+      "search_list": {
+        "title": "Administrer lagrede søk",
+        "description": "Konto: {account_name}\nAktuelle søk: {search_count}\n\nAdministrer dine lagrede eBay-søk. Hvert søk oppretter en sensor som oppdateres automatisk.",
+        "data": {
+          "action": "Handling"
+        }
+      },
+      "search_config": {
+        "title": "{action} Søk",
+        "description": "Konfigurer søkeparameterne dine. Søket kjøres automatisk med det angitte intervallet.",
+        "data": {
+          "search_query": "Søkenøkkelord",
+          "site": "eBay-nettsted (land)",
+          "category_id": "Kategori-ID (valgfritt)",
+          "min_price": "Minimumspris (valgfritt)",
+          "max_price": "Maksimumspris (valgfritt)",
+          "listing_type": "Annonseringstype",
+          "update_interval": "Oppdateringsintervall (minutter)"
+        },
+        "data_description": {
+          "search_query": "Hva du vil søke etter (f.eks. 'vintage kamera')",
+          "site": "Hvilket lands eBay-nettsted du vil søke på",
+          "category_id": "eBay-kategorinummer for å filtrere resultater (finn dette i eBay-URL-er)",
+          "min_price": "Vis bare varer over denne prisen",
+          "max_price": "Vis bare varer under denne prisen",
+          "listing_type": "Filtrer etter auksjon, kjøp nå eller vis begge",
+          "update_interval": "Hvor ofte nye annonser skal sjekkes (5–1440 minutter)"
+        }
+      },
+      "confirm_delete": {
+        "title": "Bekreft sletting",
+        "description": "Er du sikker på at du vil slette dette søket?\n\nSøk: {search_query}\n\nDette kan ikke angres.",
+        "data": {
+          "confirm": "Ja, slett dette søket"
+        }
+      }
+    },
+    "error": {
+      "invalid_query": "Søkenøkkelord kan ikke være tomme. Skriv inn hva du vil søke etter.",
+      "invalid_price_range": "Maksimumsprisen må være høyere enn minimumsprisen."
+    }
+  }
+}

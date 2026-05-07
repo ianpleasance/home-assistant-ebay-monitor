@@ -1,0 +1,81 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Adicionar conta eBay",
+        "description": "Introduza um nome amigável para esta conta eBay (por exemplo, 'Pessoal', 'Empresa'). Pode adicionar várias contas se necessário.",
+        "data": {
+          "account_name": "Nome da conta"
+        }
+      },
+      "credentials": {
+        "title": "Credenciais de programador do eBay",
+        "description": "Introduza as suas credenciais da API eBay do eBay Developer Program.\n\nComo obtê-las:\n1. Visite https://developer.ebay.com/\n2. Inicie sessão e vá para 'A minha conta' → 'Chaves da aplicação'\n3. Crie uma nova aplicação (ambiente de produção)\n4. Copie as credenciais abaixo",
+        "data": {
+          "app_id": "ID da aplicação (App ID / ID de cliente)",
+          "dev_id": "ID do programador (Dev ID)",
+          "cert_id": "ID do certificado (Cert ID / Segredo do cliente)",
+          "token": "Token de autenticação do utilizador"
+        },
+        "data_description": {
+          "app_id": "O identificador da sua aplicação no eBay Developer Portal",
+          "dev_id": "O identificador da sua conta de programador",
+          "cert_id": "O certificado/chave secreta da sua aplicação",
+          "token": "Token de utilizador OAuth — gere-o na secção 'Tokens de utilizador'"
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "Uma ou mais credenciais estão em falta. Verifique se todos os campos estão preenchidos.",
+      "cannot_connect": "Não é possível ligar à API do eBay. Verifique se as suas credenciais estão corretas.",
+      "unknown": "Ocorreu um erro inesperado. Tente novamente."
+    },
+    "abort": {
+      "already_configured": "Já existe uma conta configurada com este nome. Escolha um nome diferente."
+    }
+  },
+  "options": {
+    "step": {
+      "search_list": {
+        "title": "Gerir pesquisas guardadas",
+        "description": "Conta: {account_name}\nPesquisas atuais: {search_count}\n\nGira as suas pesquisas eBay guardadas. Cada pesquisa cria um sensor que é atualizado automaticamente.",
+        "data": {
+          "action": "Ação"
+        }
+      },
+      "search_config": {
+        "title": "{action} Pesquisa",
+        "description": "Configure os parâmetros da sua pesquisa. A pesquisa será executada automaticamente com o intervalo especificado.",
+        "data": {
+          "search_query": "Palavras-chave de pesquisa",
+          "site": "Site do eBay (país)",
+          "category_id": "ID de categoria (opcional)",
+          "min_price": "Preço mínimo (opcional)",
+          "max_price": "Preço máximo (opcional)",
+          "listing_type": "Tipo de anúncio",
+          "update_interval": "Intervalo de atualização (minutos)"
+        },
+        "data_description": {
+          "search_query": "O que pretende pesquisar (por exemplo, 'câmara vintage')",
+          "site": "O site do eBay do país onde pretende pesquisar",
+          "category_id": "Número de categoria do eBay para filtrar resultados (encontre nos URLs do eBay)",
+          "min_price": "Mostrar apenas artigos acima deste preço",
+          "max_price": "Mostrar apenas artigos abaixo deste preço",
+          "listing_type": "Filtrar por leilão, comprar agora ou mostrar ambos",
+          "update_interval": "Com que frequência verificar novos anúncios (5–1440 minutos)"
+        }
+      },
+      "confirm_delete": {
+        "title": "Confirmar eliminação",
+        "description": "Tem a certeza de que pretende eliminar esta pesquisa?\n\nPesquisa: {search_query}\n\nEsta operação não pode ser anulada.",
+        "data": {
+          "confirm": "Sim, eliminar esta pesquisa"
+        }
+      }
+    },
+    "error": {
+      "invalid_query": "As palavras-chave de pesquisa não podem estar vazias. Introduza o que pretende pesquisar.",
+      "invalid_price_range": "O preço máximo deve ser superior ao preço mínimo."
+    }
+  }
+}

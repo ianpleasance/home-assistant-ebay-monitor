@@ -1,0 +1,81 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Lisää eBay-tili",
+        "description": "Syötä kuvaava nimi tälle eBay-tilille (esim. 'Henkilökohtainen', 'Yritys'). Voit lisätä useita tilejä tarpeen mukaan.",
+        "data": {
+          "account_name": "Tilin nimi"
+        }
+      },
+      "credentials": {
+        "title": "eBay-kehittäjätunnukset",
+        "description": "Syötä eBay API -tunnuksesi eBay Developer Program -palvelusta.\n\nTunnusten hankkiminen:\n1. Siirry osoitteeseen https://developer.ebay.com/\n2. Kirjaudu sisään ja siirry kohtaan 'Oma tili' → 'Sovellusavaimet'\n3. Luo uusi sovellus (tuotantoympäristö)\n4. Kopioi tunnukset alla oleviin kenttiin",
+        "data": {
+          "app_id": "Sovellustunnus (App ID / Asiakastunnus)",
+          "dev_id": "Kehittäjätunnus (Dev ID)",
+          "cert_id": "Sertifikaattitunnus (Cert ID / Asiakassalaisuus)",
+          "token": "Käyttäjän todennustoken"
+        },
+        "data_description": {
+          "app_id": "Sovellustunnistimesi eBay Developer Portalista",
+          "dev_id": "Kehittäjätilitunnistimesi",
+          "cert_id": "Sovelluksesi sertifikaatti/salainen avain",
+          "token": "OAuth-käyttäjätoken — luo tämä 'Käyttäjätokenit'-osiosta"
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "Yksi tai useampi tunnus puuttuu. Tarkista, että kaikki kentät on täytetty.",
+      "cannot_connect": "Yhteys eBay API:iin epäonnistui. Tarkista tunnuksesi.",
+      "unknown": "Tapahtui odottamaton virhe. Yritä uudelleen."
+    },
+    "abort": {
+      "already_configured": "Tällä nimellä on jo määritetty tili. Valitse eri nimi."
+    }
+  },
+  "options": {
+    "step": {
+      "search_list": {
+        "title": "Hallitse tallennettuja hakuja",
+        "description": "Tili: {account_name}\nNykyiset haut: {search_count}\n\nHallitse tallennettuja eBay-hakujasi. Jokainen haku luo anturin, joka päivittyy automaattisesti.",
+        "data": {
+          "action": "Toiminto"
+        }
+      },
+      "search_config": {
+        "title": "{action} Haku",
+        "description": "Määritä hakuparametrit. Haku suoritetaan automaattisesti määritetyin välein.",
+        "data": {
+          "search_query": "Hakusanat",
+          "site": "eBay-sivusto (maa)",
+          "category_id": "Kategoriatunnus (valinnainen)",
+          "min_price": "Vähimmäishinta (valinnainen)",
+          "max_price": "Enimmäishinta (valinnainen)",
+          "listing_type": "Listatyyyppi",
+          "update_interval": "Päivitysväli (minuuttia)"
+        },
+        "data_description": {
+          "search_query": "Mitä haluat hakea (esim. 'vintage kamera')",
+          "site": "Minkä maan eBay-sivustolta haetaan",
+          "category_id": "eBay-kategorianumero tulosten suodattamiseen (löytyy eBay-URL-osoitteista)",
+          "min_price": "Näytä vain tätä kalliimmat tuotteet",
+          "max_price": "Näytä vain tätä halvemmat tuotteet",
+          "listing_type": "Suodata huutokaupan, osta heti tai näytä molemmat",
+          "update_interval": "Kuinka usein uusia listauksia tarkistetaan (5–1440 minuuttia)"
+        }
+      },
+      "confirm_delete": {
+        "title": "Vahvista poisto",
+        "description": "Haluatko varmasti poistaa tämän haun?\n\nHaku: {search_query}\n\nTätä ei voi peruuttaa.",
+        "data": {
+          "confirm": "Kyllä, poista tämä haku"
+        }
+      }
+    },
+    "error": {
+      "invalid_query": "Hakusanat eivät voi olla tyhjiä. Kirjoita mitä haluat hakea.",
+      "invalid_price_range": "Enimmäishinnan on oltava suurempi kuin vähimmäishinnan."
+    }
+  }
+}

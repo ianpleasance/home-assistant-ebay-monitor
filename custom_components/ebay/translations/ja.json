@@ -1,0 +1,81 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "eBayアカウントを追加",
+        "description": "このeBayアカウントのわかりやすい名前を入力してください（例：「個人用」、「ビジネス用」）。必要に応じて複数のアカウントを追加できます。",
+        "data": {
+          "account_name": "アカウント名"
+        }
+      },
+      "credentials": {
+        "title": "eBay開発者認証情報",
+        "description": "eBay Developer ProgramのeBay API認証情報を入力してください。\n\n取得方法：\n1. https://developer.ebay.com/ にアクセス\n2. ログインして「マイアカウント」→「アプリケーションキー」に移動\n3. 新しいアプリケーションを作成（本番環境）\n4. 以下の認証情報をコピー",
+        "data": {
+          "app_id": "アプリケーションID（App ID / クライアントID）",
+          "dev_id": "開発者ID（Dev ID）",
+          "cert_id": "証明書ID（Cert ID / クライアントシークレット）",
+          "token": "ユーザー認証トークン"
+        },
+        "data_description": {
+          "app_id": "eBay Developer Portalのアプリケーション識別子",
+          "dev_id": "開発者アカウントの識別子",
+          "cert_id": "アプリケーションの証明書/シークレットキー",
+          "token": "OAuthユーザートークン — 「ユーザートークン」セクションから生成"
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "1つ以上の認証情報が不足しています。すべてのフィールドが入力されているか確認してください。",
+      "cannot_connect": "eBay APIに接続できません。認証情報が正しいか確認してください。",
+      "unknown": "予期しないエラーが発生しました。もう一度お試しください。"
+    },
+    "abort": {
+      "already_configured": "この名前のアカウントはすでに設定されています。別の名前を選択してください。"
+    }
+  },
+  "options": {
+    "step": {
+      "search_list": {
+        "title": "保存した検索を管理",
+        "description": "アカウント：{account_name}\n現在の検索数：{search_count}\n\n保存したeBay検索を管理します。各検索は自動的に更新されるセンサーを作成します。",
+        "data": {
+          "action": "アクション"
+        }
+      },
+      "search_config": {
+        "title": "{action} 検索",
+        "description": "検索パラメーターを設定します。指定した間隔で自動的に検索が実行されます。",
+        "data": {
+          "search_query": "検索キーワード",
+          "site": "eBayサイト（国）",
+          "category_id": "カテゴリID（任意）",
+          "min_price": "最低価格（任意）",
+          "max_price": "最高価格（任意）",
+          "listing_type": "出品タイプ",
+          "update_interval": "更新間隔（分）"
+        },
+        "data_description": {
+          "search_query": "検索したいもの（例：「ビンテージカメラ」）",
+          "site": "検索するeBayサイトの国",
+          "category_id": "結果を絞り込むeBayカテゴリ番号（eBayのURLで確認）",
+          "min_price": "この価格以上の商品のみ表示",
+          "max_price": "この価格以下の商品のみ表示",
+          "listing_type": "オークション、即購入、または両方でフィルタリング",
+          "update_interval": "新しいリストの確認頻度（5〜1440分）"
+        }
+      },
+      "confirm_delete": {
+        "title": "削除の確認",
+        "description": "この検索を削除してよろしいですか？\n\n検索：{search_query}\n\nこの操作は取り消せません。",
+        "data": {
+          "confirm": "はい、この検索を削除します"
+        }
+      }
+    },
+    "error": {
+      "invalid_query": "検索キーワードを空にすることはできません。検索内容を入力してください。",
+      "invalid_price_range": "最高価格は最低価格より高くなければなりません。"
+    }
+  }
+}

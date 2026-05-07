@@ -1,0 +1,81 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Dodaj konto eBay",
+        "description": "Wprowadź przyjazną nazwę dla tego konta eBay (np. 'Prywatne', 'Firmowe'). W razie potrzeby możesz dodać wiele kont.",
+        "data": {
+          "account_name": "Nazwa konta"
+        }
+      },
+      "credentials": {
+        "title": "Dane uwierzytelniające eBay dla deweloperów",
+        "description": "Wprowadź swoje dane uwierzytelniające API eBay z eBay Developer Program.\n\nJak je uzyskać:\n1. Odwiedź https://developer.ebay.com/\n2. Zaloguj się i przejdź do 'Moje konto' → 'Klucze aplikacji'\n3. Utwórz nową aplikację (środowisko produkcyjne)\n4. Skopiuj dane uwierzytelniające poniżej",
+        "data": {
+          "app_id": "Identyfikator aplikacji (App ID / Client ID)",
+          "dev_id": "Identyfikator dewelopera (Dev ID)",
+          "cert_id": "Identyfikator certyfikatu (Cert ID / Client Secret)",
+          "token": "Token uwierzytelniający użytkownika"
+        },
+        "data_description": {
+          "app_id": "Identyfikator Twojej aplikacji z eBay Developer Portal",
+          "dev_id": "Identyfikator Twojego konta dewelopera",
+          "cert_id": "Certyfikat/klucz tajny Twojej aplikacji",
+          "token": "Token użytkownika OAuth — wygeneruj go w sekcji 'Tokeny użytkownika'"
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "Brakuje jednego lub więcej danych uwierzytelniających. Sprawdź, czy wszystkie pola są wypełnione.",
+      "cannot_connect": "Nie można połączyć się z API eBay. Sprawdź poprawność danych uwierzytelniających.",
+      "unknown": "Wystąpił nieoczekiwany błąd. Spróbuj ponownie."
+    },
+    "abort": {
+      "already_configured": "Konto o tej nazwie jest już skonfigurowane. Wybierz inną nazwę."
+    }
+  },
+  "options": {
+    "step": {
+      "search_list": {
+        "title": "Zarządzaj zapisanymi wyszukiwaniami",
+        "description": "Konto: {account_name}\nAktualne wyszukiwania: {search_count}\n\nZarządzaj zapisanymi wyszukiwaniami eBay. Każde wyszukiwanie tworzy czujnik, który aktualizuje się automatycznie.",
+        "data": {
+          "action": "Akcja"
+        }
+      },
+      "search_config": {
+        "title": "{action} Wyszukiwanie",
+        "description": "Skonfiguruj parametry wyszukiwania. Wyszukiwanie będzie uruchamiane automatycznie w określonym interwale.",
+        "data": {
+          "search_query": "Słowa kluczowe wyszukiwania",
+          "site": "Witryna eBay (kraj)",
+          "category_id": "Identyfikator kategorii (opcjonalnie)",
+          "min_price": "Minimalna cena (opcjonalnie)",
+          "max_price": "Maksymalna cena (opcjonalnie)",
+          "listing_type": "Typ oferty",
+          "update_interval": "Interwał aktualizacji (minuty)"
+        },
+        "data_description": {
+          "search_query": "Czego szukasz (np. 'aparat vintage')",
+          "site": "Witryna eBay danego kraju, którą chcesz przeszukać",
+          "category_id": "Numer kategorii eBay do filtrowania wyników (znajdź w adresach URL eBay)",
+          "min_price": "Pokaż tylko produkty droższe od tej ceny",
+          "max_price": "Pokaż tylko produkty tańsze od tej ceny",
+          "listing_type": "Filtruj według aukcji, kup teraz lub pokaż oba",
+          "update_interval": "Jak często sprawdzać nowe oferty (5–1440 minut)"
+        }
+      },
+      "confirm_delete": {
+        "title": "Potwierdź usunięcie",
+        "description": "Czy na pewno chcesz usunąć to wyszukiwanie?\n\nWyszukiwanie: {search_query}\n\nTej operacji nie można cofnąć.",
+        "data": {
+          "confirm": "Tak, usuń to wyszukiwanie"
+        }
+      }
+    },
+    "error": {
+      "invalid_query": "Słowa kluczowe wyszukiwania nie mogą być puste. Wprowadź, czego szukasz.",
+      "invalid_price_range": "Maksymalna cena musi być wyższa od minimalnej."
+    }
+  }
+}

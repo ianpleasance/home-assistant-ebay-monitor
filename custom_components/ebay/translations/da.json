@@ -1,0 +1,81 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Tilføj eBay-konto",
+        "description": "Indtast et venligt navn til denne eBay-konto (f.eks. 'Personlig', 'Erhverv'). Du kan tilføje flere konti efter behov.",
+        "data": {
+          "account_name": "Kontonavn"
+        }
+      },
+      "credentials": {
+        "title": "eBay-udviklercertifikater",
+        "description": "Indtast dine eBay API-legitimationsoplysninger fra eBay Developer Program.\n\nSådan finder du dem:\n1. Besøg https://developer.ebay.com/\n2. Log ind og gå til 'Min konto' → 'Applikationsnøgler'\n3. Opret en ny applikation (produktionsmiljø)\n4. Kopiér legitimationsoplysningerne nedenfor",
+        "data": {
+          "app_id": "Applikations-id (App ID / Klient-id)",
+          "dev_id": "Udvikler-id (Dev ID)",
+          "cert_id": "Certifikat-id (Cert ID / Klienthemmelighed)",
+          "token": "Brugerautorisationstoken"
+        },
+        "data_description": {
+          "app_id": "Dit applikationsidentifikator fra eBay Developer Portal",
+          "dev_id": "Din udviklerkontoid",
+          "cert_id": "Dit applikationscertifikat/hemmelig nøgle",
+          "token": "OAuth-brugertoken — generer dette fra afsnittet 'Brugertokens'"
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "En eller flere legitimationsoplysninger mangler. Kontrollér, at alle felter er udfyldt.",
+      "cannot_connect": "Kan ikke oprette forbindelse til eBay API. Kontrollér, at dine legitimationsoplysninger er korrekte.",
+      "unknown": "Der opstod en uventet fejl. Prøv igen."
+    },
+    "abort": {
+      "already_configured": "En konto med dette navn er allerede konfigureret. Vælg et andet navn."
+    }
+  },
+  "options": {
+    "step": {
+      "search_list": {
+        "title": "Administrer gemte søgninger",
+        "description": "Konto: {account_name}\nAktuelle søgninger: {search_count}\n\nAdministrer dine gemte eBay-søgninger. Hver søgning opretter en sensor, der opdateres automatisk.",
+        "data": {
+          "action": "Handling"
+        }
+      },
+      "search_config": {
+        "title": "{action} Søgning",
+        "description": "Konfigurér dine søgeparametre. Søgningen kører automatisk med det angivne interval.",
+        "data": {
+          "search_query": "Søgenøgleord",
+          "site": "eBay-websted (land)",
+          "category_id": "Kategori-id (valgfrit)",
+          "min_price": "Minimumspris (valgfrit)",
+          "max_price": "Maksimumspris (valgfrit)",
+          "listing_type": "Annonceringtype",
+          "update_interval": "Opdateringsinterval (minutter)"
+        },
+        "data_description": {
+          "search_query": "Hvad du vil søge efter (f.eks. 'vintage kamera')",
+          "site": "Hvilket lands eBay-websted du vil søge på",
+          "category_id": "eBay-kategorinummer til filtrering (find dette i eBay-URL'er)",
+          "min_price": "Vis kun varer over denne pris",
+          "max_price": "Vis kun varer under denne pris",
+          "listing_type": "Filtrer efter auktion, køb nu eller vis begge",
+          "update_interval": "Hvor ofte der skal tjekkes for nye annoncer (5–1440 minutter)"
+        }
+      },
+      "confirm_delete": {
+        "title": "Bekræft sletning",
+        "description": "Er du sikker på, at du vil slette denne søgning?\n\nSøgning: {search_query}\n\nDette kan ikke fortrydes.",
+        "data": {
+          "confirm": "Ja, slet denne søgning"
+        }
+      }
+    },
+    "error": {
+      "invalid_query": "Søgenøgleord må ikke være tomme. Angiv, hvad du vil søge efter.",
+      "invalid_price_range": "Maksimumsprisen skal være højere end minimumsprisen."
+    }
+  }
+}
