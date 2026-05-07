@@ -5,9 +5,11 @@ import logging
 from datetime import datetime
 from typing import Any
 
-from homeassistant.components.sensor import SensorEntity
+from homeassistant.components.sensor import SensorEntity, SensorStateClass
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.device_registry import DeviceEntryType
+from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.util import dt as dt_util
@@ -41,24 +43,16 @@ _LOGGER = logging.getLogger(__name__)
 CHUNK_SIZE = 20  # Items per chunk sensor
 
 
-def _create_chunks(items: list[dict[str, Any]], chunk_size: int = CHUNK_SIZE) -> list[list[dict[str, Any]]]:
-    """Split items into chunks of specified size.
-    
-    Args:
-        items: List of items to chunk
-        chunk_size: Number of items per chunk
-        
-    Returns:
-        List of chunks, each containing up to chunk_size items
-    """
-    if not items:
-        return []
-    
-    chunks = []
-    for i in range(0, len(items), chunk_size):
-        chunks.append(items[i:i + chunk_size])
-    
-    return chunks
+def _device_info(account_name: str) -> DeviceInfo:
+    """Return shared device info for all sensors in an account."""
+    return DeviceInfo(
+        identifiers={(DOMAIN, account_name)},
+        name=f"eBay {account_name}",
+        manufacturer="eBay",
+        entry_type=DeviceEntryType.SERVICE,
+    )
+
+
 
 
 async def async_setup_entry(
@@ -194,6 +188,7 @@ class EbayBidsSensor(CoordinatorEntity, SensorEntity):
     """Sensor for eBay active bids (main sensor - count only)."""
 
     _attr_icon = "mdi:gavel"
+    _attr_state_class = SensorStateClass.MEASUREMENT
 
     def __init__(
         self,
@@ -205,6 +200,7 @@ class EbayBidsSensor(CoordinatorEntity, SensorEntity):
         self._account_name = account_name
         self._attr_name = f"eBay {account_name} Active Bids"
         self._attr_unique_id = f"ebay_{account_name}_bids"
+        self._attr_device_info = _device_info(account_name)
 
     @property
     def native_value(self) -> int:
@@ -227,7 +223,7 @@ class EbayBidsSensor(CoordinatorEntity, SensorEntity):
             ATTR_ITEM_COUNT: item_count,
             "chunk_count": chunk_count,
             "chunk_sensors": chunk_sensors,
-            ATTR_LAST_UPDATED: dt_util.now().isoformat(),
+            ATTR_LAST_UPDATED: dt_util.now(),
         }
 
 
@@ -248,6 +244,7 @@ class EbayBidsChunkSensor(CoordinatorEntity, SensorEntity):
         self._chunk_number = chunk_number
         self._attr_name = f"eBay {account_name} Active Bids Chunk {chunk_number}"
         self._attr_unique_id = f"ebay_{account_name}_active_bids_chunk_{chunk_number}"
+        self._attr_device_info = _device_info(account_name)
 
     @property
     def native_value(self) -> int:
@@ -270,7 +267,7 @@ class EbayBidsChunkSensor(CoordinatorEntity, SensorEntity):
             "chunk_end": end_idx + 1,  # 1-indexed for display
             ATTR_ITEMS: items,
             "parent_sensor": f"sensor.ebay_{self._account_name.lower().replace(' ', '_')}_active_bids",
-            ATTR_LAST_UPDATED: dt_util.now().isoformat(),
+            ATTR_LAST_UPDATED: dt_util.now(),
         }
     
     def _get_chunk_items(self) -> list[dict[str, Any]]:
@@ -288,6 +285,7 @@ class EbayWatchlistSensor(CoordinatorEntity, SensorEntity):
     """Sensor for eBay watchlist (main sensor - count only)."""
 
     _attr_icon = "mdi:eye"
+    _attr_state_class = SensorStateClass.MEASUREMENT
 
     def __init__(
         self,
@@ -299,6 +297,7 @@ class EbayWatchlistSensor(CoordinatorEntity, SensorEntity):
         self._account_name = account_name
         self._attr_name = f"eBay {account_name} Watchlist"
         self._attr_unique_id = f"ebay_{account_name}_watchlist"
+        self._attr_device_info = _device_info(account_name)
 
     @property
     def native_value(self) -> int:
@@ -320,7 +319,7 @@ class EbayWatchlistSensor(CoordinatorEntity, SensorEntity):
             ATTR_ITEM_COUNT: item_count,
             "chunk_count": chunk_count,
             "chunk_sensors": chunk_sensors,
-            ATTR_LAST_UPDATED: dt_util.now().isoformat(),
+            ATTR_LAST_UPDATED: dt_util.now(),
         }
 
 
@@ -341,6 +340,7 @@ class EbayWatchlistChunkSensor(CoordinatorEntity, SensorEntity):
         self._chunk_number = chunk_number
         self._attr_name = f"eBay {account_name} Watchlist Chunk {chunk_number}"
         self._attr_unique_id = f"ebay_{account_name}_watchlist_chunk_{chunk_number}"
+        self._attr_device_info = _device_info(account_name)
 
     @property
     def native_value(self) -> int:
@@ -362,7 +362,7 @@ class EbayWatchlistChunkSensor(CoordinatorEntity, SensorEntity):
             "chunk_end": end_idx + 1,
             ATTR_ITEMS: items,
             "parent_sensor": f"sensor.ebay_{self._account_name.lower().replace(' ', '_')}_watchlist",
-            ATTR_LAST_UPDATED: dt_util.now().isoformat(),
+            ATTR_LAST_UPDATED: dt_util.now(),
         }
     
     def _get_chunk_items(self) -> list[dict[str, Any]]:
@@ -380,6 +380,7 @@ class EbayPurchasesSensor(CoordinatorEntity, SensorEntity):
     """Sensor for eBay purchases (main sensor - count only)."""
 
     _attr_icon = "mdi:shopping"
+    _attr_state_class = SensorStateClass.MEASUREMENT
 
     def __init__(
         self,
@@ -391,6 +392,7 @@ class EbayPurchasesSensor(CoordinatorEntity, SensorEntity):
         self._account_name = account_name
         self._attr_name = f"eBay {account_name} Purchases"
         self._attr_unique_id = f"ebay_{account_name}_purchases"
+        self._attr_device_info = _device_info(account_name)
 
     @property
     def native_value(self) -> int:
@@ -412,7 +414,7 @@ class EbayPurchasesSensor(CoordinatorEntity, SensorEntity):
             ATTR_ITEM_COUNT: item_count,
             "chunk_count": chunk_count,
             "chunk_sensors": chunk_sensors,
-            ATTR_LAST_UPDATED: dt_util.now().isoformat(),
+            ATTR_LAST_UPDATED: dt_util.now(),
         }
 
 
@@ -433,6 +435,7 @@ class EbayPurchasesChunkSensor(CoordinatorEntity, SensorEntity):
         self._chunk_number = chunk_number
         self._attr_name = f"eBay {account_name} Purchases Chunk {chunk_number}"
         self._attr_unique_id = f"ebay_{account_name}_purchases_chunk_{chunk_number}"
+        self._attr_device_info = _device_info(account_name)
 
     @property
     def native_value(self) -> int:
@@ -454,7 +457,7 @@ class EbayPurchasesChunkSensor(CoordinatorEntity, SensorEntity):
             "chunk_end": end_idx + 1,
             ATTR_ITEMS: items,
             "parent_sensor": f"sensor.ebay_{self._account_name.lower().replace(' ', '_')}_purchases",
-            ATTR_LAST_UPDATED: dt_util.now().isoformat(),
+            ATTR_LAST_UPDATED: dt_util.now(),
         }
     
     def _get_chunk_items(self) -> list[dict[str, Any]]:
@@ -472,6 +475,7 @@ class EbaySearchSensor(CoordinatorEntity, SensorEntity):
     """Sensor for eBay search results (main sensor - count only)."""
 
     _attr_icon = "mdi:magnify"
+    _attr_state_class = SensorStateClass.MEASUREMENT
 
     def __init__(
         self,
@@ -487,6 +491,7 @@ class EbaySearchSensor(CoordinatorEntity, SensorEntity):
         self._search_query = search_query
         self._attr_name = f"eBay {account_name} Search {search_id}"
         self._attr_unique_id = f"ebay_{account_name}_search_{search_id}"
+        self._attr_device_info = _device_info(account_name)
 
     @property
     def native_value(self) -> int:
@@ -541,7 +546,7 @@ class EbaySearchSensor(CoordinatorEntity, SensorEntity):
             "buy_now_count": buy_now_count,
             "chunk_count": chunk_count,
             "chunk_sensors": chunk_sensors,
-            ATTR_LAST_UPDATED: dt_util.now().isoformat(),
+            ATTR_LAST_UPDATED: dt_util.now(),
         }
 
 
@@ -566,6 +571,7 @@ class EbaySearchChunkSensor(CoordinatorEntity, SensorEntity):
         self._chunk_number = chunk_number
         self._attr_name = f"eBay {account_name} Search {search_id} Chunk {chunk_number}"
         self._attr_unique_id = f"ebay_{account_name}_search_{search_id}_chunk_{chunk_number}"
+        self._attr_device_info = _device_info(account_name)
 
     @property
     def native_value(self) -> int:
@@ -589,7 +595,7 @@ class EbaySearchChunkSensor(CoordinatorEntity, SensorEntity):
             "search_id": self._search_id,
             ATTR_ITEMS: items,
             "parent_sensor": f"sensor.ebay_{self._account_name.lower().replace(' ', '_')}_search_{self._search_id}",
-            ATTR_LAST_UPDATED: dt_util.now().isoformat(),
+            ATTR_LAST_UPDATED: dt_util.now(),
         }
     
     def _get_chunk_items(self) -> list[dict[str, Any]]:
@@ -614,6 +620,7 @@ class EbayAPIUsageSensor(SensorEntity):
         self._account_name = account_name
         self._attr_name = f"eBay {account_name} API Usage"
         self._attr_unique_id = f"ebay_{account_name.lower().replace(' ', '_')}_api_usage"
+        self._attr_device_info = _device_info(account_name)
         self._usage_data = None
 
     @property
@@ -664,10 +671,11 @@ class EbayAPIUsageSensor(SensorEntity):
         if self._usage_data.get("error"):
             attrs["error"] = self._usage_data["error"]
         
-        attrs[ATTR_LAST_UPDATED] = dt_util.now().isoformat()
+        attrs[ATTR_LAST_UPDATED] = dt_util.now()
         
         return attrs
 
     async def async_update(self) -> None:
         """Fetch new state data for the sensor."""
         self._usage_data = await self._api.get_rate_limit_usage()
+

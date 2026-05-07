@@ -143,7 +143,21 @@ class EbayBidsCoordinator(DataUpdateCoordinator):
         self.api = api
         self.account_name = account_name
         self._previous_data: dict[str, Any] = {}
-        
+
+        # Items that have disappeared from the bid list but haven't been verified yet.
+        # Key: item_id, Value: dict with keys:
+        #   - 'item': the last known item data
+        #   - 'missing_since_poll': poll count when item first disappeared
+        #   - 'poll_count': current poll count (incremented each _async_update_data call)
+        # We wait GRACE_POLLS cycles before verifying and firing won/lost events.
+        # This handles both transient API glitches and the eBay settlement delay after
+        # an auction ends (Shopping API can take 30-60s to reflect final status).
+        self._pending_ended: dict[str, dict[str, Any]] = {}
+        self._poll_count: int = 0
+        # Number of poll cycles to wait before verifying a disappeared item.
+        # At default 5-minute interval, 2 polls = ~10 minutes grace period.
+        self._GRACE_POLLS: int = 2
+
         # Storage for persisting state across restarts
         self._store = Store(
             hass,
@@ -169,8 +183,9 @@ class EbayBidsCoordinator(DataUpdateCoordinator):
                 _LOGGER.warning("EbayBidsCoordinator: Could not load state: %s", err)
             self._state_loaded = True
         
-        _LOGGER.debug("EbayBidsCoordinator: Starting update for account '%s'", self.account_name)
-        
+        self._poll_count += 1
+        _LOGGER.debug("EbayBidsCoordinator: Starting update for account '%s' (poll #%d)", self.account_name, self._poll_count)
+
         try:
             data = await self.api.get_my_ebay_buying()
             bids = data.get("bids", [])
@@ -258,186 +273,142 @@ class EbayBidsCoordinator(DataUpdateCoordinator):
             # Check if auction ending soon
             self._check_ending_soon(bid)
 
-        # Check for ended auctions
+        # Check for items that have disappeared from the bid list.
+        # Instead of firing won/lost immediately (which causes false events on
+        # transient API glitches and eBay's post-auction settlement delay),
+        # we move disappeared items into a pending queue and only verify after
+        # _GRACE_POLLS poll cycles have elapsed.
         ended_ids = previous_ids - current_ids
-        if ended_ids:
-            _LOGGER.info(
-                "EbayBidsCoordinator: %d auction(s) ended - %s",
-                len(ended_ids),
-                ended_ids
-            )
-            
+
+        # Add newly disappeared items to the pending queue
         for item_id in ended_ids:
-            previous = self._previous_data[item_id]
-            
-            # CRITICAL: Don't trust the cached is_high_bidder status!
-            # 
-            # Race condition scenario:
-            # 1. Last coordinator refresh shows is_high_bidder=false (you're outbid)
-            # 2. You bid at the last second (15:29:55)
-            # 3. Auction ends (15:30:00) - you won!
-            # 4. Next refresh (15:30:15) - auction gone from active bids
-            # 5. Cached status still shows is_high_bidder=false
-            # 6. Wrong event fires: auction_lost instead of auction_won!
-            #
-            # Solution: Query eBay API for authoritative final auction status
-            # This adds ~1 second delay but ensures accuracy for last-minute bids
-            
+            if item_id not in self._pending_ended:
+                self._pending_ended[item_id] = {
+                    "item": self._previous_data[item_id],
+                    "missing_since_poll": self._poll_count,
+                }
+                _LOGGER.info(
+                    "EbayBidsCoordinator: Item %s (%s) disappeared from bids - queuing for verification in %d poll(s)",
+                    item_id,
+                    self._previous_data[item_id].get("title", "Unknown"),
+                    self._GRACE_POLLS,
+                )
+
+        # Re-add any pending items that came back (transient API glitch)
+        recovered_ids = set(self._pending_ended.keys()) & current_ids
+        for item_id in recovered_ids:
+            _LOGGER.info(
+                "EbayBidsCoordinator: Item %s (%s) reappeared in bids after disappearing - cancelling won/lost check (was a transient API glitch)",
+                item_id,
+                self._pending_ended[item_id]["item"].get("title", "Unknown"),
+            )
+            del self._pending_ended[item_id]
+
+        # Process items that have been missing long enough
+        ready_to_verify = [
+            item_id for item_id, state in self._pending_ended.items()
+            if self._poll_count - state["missing_since_poll"] >= self._GRACE_POLLS
+        ]
+
+        for item_id in ready_to_verify:
+            previous = self._pending_ended.pop(item_id)["item"]
+
             try:
                 _LOGGER.debug(
-                    "EbayBidsCoordinator: Verifying final status for ended auction %s via GetItem API",
-                    item_id
+                    "EbayBidsCoordinator: Verifying final status for item %s via GetSingleItem API",
+                    item_id,
                 )
-                
-                # Get authoritative final state from eBay
+
                 final_item = await self.api.get_item(item_id)
-                
+
                 if final_item:
-                    # CRITICAL: Check if auction actually ended
-                    # Items can disappear from active bids for reasons other than ending:
-                    # - You were outbid (eBay removes from your bids list)
-                    # - You retracted your bid
-                    # - Seller cancelled auction
-                    # - Temporary API glitch
                     listing_status = final_item.get("listing_status", "Unknown")
-                    
+
                     _LOGGER.debug(
                         "EbayBidsCoordinator: Item %s listing status: %s",
                         item_id,
-                        listing_status
+                        listing_status,
                     )
-                    
-                    # Only fire won/lost events if auction actually completed
+
                     if listing_status in ["Completed", "Ended"]:
-                        # Auction genuinely ended - proceed with won/lost determination
-                        
-                        # Check who the high bidder is in the final state
                         high_bidder = final_item.get("high_bidder_username", "")
                         ebay_username = self.api._ebay_username or ""
-                        
-                        # Compare usernames (case-insensitive)
+
                         you_won = (
-                            high_bidder != "" and 
-                            ebay_username != "" and
-                            high_bidder.lower() == ebay_username.lower()
+                            high_bidder != ""
+                            and ebay_username != ""
+                            and high_bidder.lower() == ebay_username.lower()
                         )
-                        
+
                         _LOGGER.debug(
-                            "EbayBidsCoordinator: Final auction status - Item: %s, Status: %s, High Bidder: %s, Your Username: %s, You Won: %s",
+                            "EbayBidsCoordinator: Final status - Item: %s, Status: %s, High Bidder: %s, Your Username: %s, You Won: %s",
                             item_id,
                             listing_status,
                             high_bidder,
                             ebay_username,
-                            you_won
+                            you_won,
                         )
-                        
+
                         if you_won:
                             _LOGGER.info(
                                 "EbayBidsCoordinator: AUCTION WON (verified via API) - %s (%s)",
                                 previous.get("title", "Unknown"),
-                                item_id
+                                item_id,
                             )
                             self.hass.bus.async_fire(
                                 EVENT_AUCTION_WON,
-                                {
-                                    "account": self.account_name,
-                                    "item": previous,
-                                },
+                                {"account": self.account_name, "item": previous},
                             )
                         else:
                             _LOGGER.info(
                                 "EbayBidsCoordinator: AUCTION LOST (verified via API) - %s (%s)",
                                 previous.get("title", "Unknown"),
-                                item_id
+                                item_id,
                             )
                             self.hass.bus.async_fire(
                                 EVENT_AUCTION_LOST,
-                                {
-                                    "account": self.account_name,
-                                    "item": previous,
-                                },
+                                {"account": self.account_name, "item": previous},
                             )
                     else:
-                        # Auction still active - item just removed from bids
-                        # This happens when outbid, bid retracted, or auction cancelled
+                        # Auction not yet ended or was cancelled/retracted
                         _LOGGER.warning(
-                            "EbayBidsCoordinator: Item %s (%s) disappeared from active bids but auction status is '%s' (not ended). "
-                            "Likely outbid, bid retracted, or auction cancelled. Not firing won/lost event.",
+                            "EbayBidsCoordinator: Item %s (%s) still shows status '%s' after grace period - "                            "not firing won/lost (outbid, bid retracted, cancelled, or eBay API delay)",
                             item_id,
                             previous.get("title", "Unknown"),
-                            listing_status
+                            listing_status,
                         )
                 else:
-                    # GetItem returned no data - fall back to cached status
+                    # GetSingleItem returned nothing - fall back to cached is_high_bidder
                     _LOGGER.warning(
-                        "EbayBidsCoordinator: Could not verify final status for %s - GetItem returned no data. "
-                        "Falling back to cached is_high_bidder status (may be inaccurate for last-minute bids)",
-                        item_id
+                        "EbayBidsCoordinator: GetSingleItem returned no data for %s - "                        "falling back to cached is_high_bidder (may be inaccurate for last-minute bids)",
+                        item_id,
                     )
-                    
-                    # Use cached status as fallback
                     if previous.get("is_high_bidder"):
-                        _LOGGER.info(
-                            "EbayBidsCoordinator: AUCTION WON (fallback to cached status) - %s (%s)",
-                            previous.get("title", "Unknown"),
-                            item_id
-                        )
                         self.hass.bus.async_fire(
                             EVENT_AUCTION_WON,
-                            {
-                                "account": self.account_name,
-                                "item": previous,
-                            },
+                            {"account": self.account_name, "item": previous},
                         )
                     else:
-                        _LOGGER.info(
-                            "EbayBidsCoordinator: AUCTION LOST (fallback to cached status) - %s (%s)",
-                            previous.get("title", "Unknown"),
-                            item_id
-                        )
                         self.hass.bus.async_fire(
                             EVENT_AUCTION_LOST,
-                            {
-                                "account": self.account_name,
-                                "item": previous,
-                            },
+                            {"account": self.account_name, "item": previous},
                         )
-                        
+
             except Exception as err:
-                # API call failed - fall back to cached status
                 _LOGGER.warning(
-                    "EbayBidsCoordinator: Error verifying final status for %s: %s. "
-                    "Falling back to cached is_high_bidder status (may be inaccurate for last-minute bids)",
+                    "EbayBidsCoordinator: Error verifying final status for %s: %s - "                    "falling back to cached is_high_bidder",
                     item_id,
-                    err
+                    err,
                 )
-                
-                # Use cached status as fallback
                 if previous.get("is_high_bidder"):
-                    _LOGGER.info(
-                        "EbayBidsCoordinator: AUCTION WON (fallback to cached status) - %s (%s)",
-                        previous.get("title", "Unknown"),
-                        item_id
-                    )
                     self.hass.bus.async_fire(
                         EVENT_AUCTION_WON,
-                        {
-                            "account": self.account_name,
-                            "item": previous,
-                        },
+                        {"account": self.account_name, "item": previous},
                     )
                 else:
-                    _LOGGER.info(
-                        "EbayBidsCoordinator: AUCTION LOST (fallback to cached status) - %s (%s)",
-                        previous.get("title", "Unknown"),
-                        item_id
-                    )
                     self.hass.bus.async_fire(
                         EVENT_AUCTION_LOST,
-                        {
-                            "account": self.account_name,
-                            "item": previous,
-                        },
+                        {"account": self.account_name, "item": previous},
                     )
 
 
@@ -551,7 +522,21 @@ class EbayPurchasesCoordinator(DataUpdateCoordinator):
         self.api = api
         self.account_name = account_name
         self._previous_data: dict[str, Any] = {}
-        
+
+        # Items that have disappeared from the bid list but haven't been verified yet.
+        # Key: item_id, Value: dict with keys:
+        #   - 'item': the last known item data
+        #   - 'missing_since_poll': poll count when item first disappeared
+        #   - 'poll_count': current poll count (incremented each _async_update_data call)
+        # We wait GRACE_POLLS cycles before verifying and firing won/lost events.
+        # This handles both transient API glitches and the eBay settlement delay after
+        # an auction ends (Shopping API can take 30-60s to reflect final status).
+        self._pending_ended: dict[str, dict[str, Any]] = {}
+        self._poll_count: int = 0
+        # Number of poll cycles to wait before verifying a disappeared item.
+        # At default 5-minute interval, 2 polls = ~10 minutes grace period.
+        self._GRACE_POLLS: int = 2
+
         # Storage for persisting state across restarts
         self._store = Store(
             hass,
@@ -756,13 +741,13 @@ class EbaySearchCoordinator(DataUpdateCoordinator):
             
             # Optional: Limit history size to prevent unbounded growth
             # Keep only the most recent 1000 items
-            if len(self._previous_item_ids) > 1000:
-                # Convert to list, keep last 1000, convert back to set
-                self._previous_item_ids = set(list(self._previous_item_ids)[-1000:])
-                _LOGGER.debug(
-                    "EbaySearchCoordinator: Trimmed item history to 1000 items for search '%s'",
-                    self.search_id
-                )
+            #if len(self._previous_item_ids) > 1000:
+            #    # Convert to list, keep last 1000, convert back to set
+            #    self._previous_item_ids = set(list(self._previous_item_ids)[-1000:])
+            #    _LOGGER.debug(
+            #        "EbaySearchCoordinator: Trimmed item history to 1000 items for search '%s'",
+            #        self.search_id
+            #    )
             
             # Save state to storage
             try:
@@ -836,3 +821,4 @@ class EbaySearchCoordinator(DataUpdateCoordinator):
                         "item": item,
                     },
                 )
+

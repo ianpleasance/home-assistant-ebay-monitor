@@ -7,6 +7,7 @@ from typing import Any
 import xml.etree.ElementTree as ET
 
 import aiohttp
+from aiohttp import ClientTimeout
 
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
@@ -74,6 +75,9 @@ TRADING_API_URL = "https://api.ebay.com/ws/api.dll"
 ANALYTICS_API_URL = "https://api.ebay.com/developer/analytics/v1_beta/rate_limit"
 BROWSE_API_URL = "https://api.ebay.com/buy/browse/v1/item_summary/search"
 OAUTH_TOKEN_URL = "https://api.ebay.com/identity/v1/oauth2/token"
+
+# Request timeout for all eBay API calls (seconds)
+_API_TIMEOUT = ClientTimeout(total=30)
 
 # Cache Configuration
 # Enable/disable caching of MyeBay buying data to reduce redundant API calls
@@ -167,7 +171,8 @@ class EbayAPI:
             
             async with self._session.get(
                 ANALYTICS_API_URL,
-                headers=headers
+                headers=headers,
+                timeout=_API_TIMEOUT,
             ) as response:
                 if response.status == 200:
                     data = await response.json()
@@ -283,7 +288,6 @@ class EbayAPI:
         # Default to US
         _LOGGER.warning(f"Unknown site_id {site_id}, defaulting to EBAY_US")
         return "EBAY_US"
-        return "EBAY_US"
 
     async def _get_oauth_token(self) -> str | None:
         """Get OAuth 2.0 application token for Browse API.
@@ -324,7 +328,8 @@ class EbayAPI:
             async with self._session.post(
                 OAUTH_TOKEN_URL,
                 headers=headers,
-                data=data
+                data=data,
+                timeout=_API_TIMEOUT,
             ) as response:
                 if response.status != 200:
                     error_text = await response.text()
@@ -397,7 +402,7 @@ class EbayAPI:
             }
 
             async with self._session.post(
-                TRADING_API_URL, data=xml_request, headers=headers
+                TRADING_API_URL, data=xml_request, headers=headers, timeout=_API_TIMEOUT,
             ) as response:
                 if response.status != 200:
                     _LOGGER.error("GetUser API error: Status %s", response.status)
@@ -567,7 +572,8 @@ class EbayAPI:
             async with self._session.get(
                 BROWSE_API_URL,
                 headers=headers,
-                params=params
+                params=params,
+                timeout=_API_TIMEOUT,
             ) as response:
                 _LOGGER.debug(
                     "eBay Browse API call - Status: %s, URL: %s",
@@ -735,7 +741,7 @@ class EbayAPI:
                 self._track_api_call("trading")
 
                 async with self._session.post(
-                    TRADING_API_URL, data=xml_request, headers=headers
+                    TRADING_API_URL, data=xml_request, headers=headers, timeout=_API_TIMEOUT,
                 ) as response:
                     if response.status != 200:
                         _LOGGER.error("%s page %d error: Status %s", list_type, page_number, response.status)
@@ -810,7 +816,7 @@ class EbayAPI:
                 "IncludeSelector": "Details",
             }
 
-            async with self._session.get(SHOPPING_API_URL, params=params) as response:
+            async with self._session.get(SHOPPING_API_URL, params=params, timeout=_API_TIMEOUT) as response:
                 _LOGGER.debug(
                     "eBay Shopping API call (GetSingleItem) - Status: %s, Item: %s",
                     response.status,
@@ -1413,3 +1419,4 @@ class EbayAPI:
         except Exception as err:
             _LOGGER.debug("Error calculating time remaining: %s", err)
             return "Unknown"
+
