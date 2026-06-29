@@ -709,6 +709,21 @@ class EbaySearchCoordinator(DataUpdateCoordinator):
         )
         self._state_loaded = False
 
+    async def async_delete_state(self) -> None:
+        """Delete this search's persisted state file (.storage/ebay_search_state_<id>)."""
+        try:
+            await self._store.async_remove()
+            _LOGGER.info(
+                "EbaySearchCoordinator: Removed state file for search '%s'",
+                self.search_id,
+            )
+        except Exception as err:
+            _LOGGER.warning(
+                "EbaySearchCoordinator: Could not remove state file for search '%s': %s",
+                self.search_id,
+                err,
+            )
+
     async def _async_update_data(self) -> list[dict[str, Any]]:
         """Fetch search results."""
         # Load previous state from storage on first run

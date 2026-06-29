@@ -143,10 +143,20 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     
     if unload_ok:
-        hass.data[DOMAIN].pop(entry.entry_id)
+        data = hass.data[DOMAIN].pop(entry.entry_id)
+        
+        # Shut down all coordinators so their refresh timers are cancelled and
+        # they stop polling / firing events (search coordinators in particular
+        # fire alerts directly on the event bus).
+        for key in ("bids_coordinator", "watchlist_coordinator", "purchases_coordinator"):
+            coordinator = data.get(key)
+            if coordinator is not None:
+                await coordinator.async_shutdown()
+        
+        for search in data.get("searches", {}).values():
+            await search["coordinator"].async_shutdown()
     
     return unload_ok
-
 
 async def _create_search_coordinator(
     hass: HomeAssistant,
@@ -440,31 +450,40 @@ async def _async_register_services(hass: HomeAssistant) -> None:
         # Find and remove the search
         for entry_id, data in hass.data[DOMAIN].items():
             if search_id in data["searches"]:
-                # Build unique_id to find the entity
                 account_name = data["account_name"]
-                unique_id = f"ebay_{account_name}_search_{search_id}"
+                coordinator = data["searches"][search_id]["coordinator"]
                 
-                # Remove from entity registry using unique_id
+                # Remove the main sensor AND all chunk sensors for this search.
+                # Chunk sensors share the coordinator as listeners, so leaving any
+                # behind keeps the coordinator polling and firing alerts.
                 entity_registry = er.async_get(hass)
-                entity_id = entity_registry.async_get_entity_id("sensor", DOMAIN, unique_id)
+                prefix = f"ebay_{account_name}_search_{search_id}"
+                removed = 0
+                for entity in er.async_entries_for_config_entry(entity_registry, entry_id):
+                    if entity.unique_id == prefix or entity.unique_id.startswith(f"{prefix}_chunk_"):
+                        entity_registry.async_remove(entity.entity_id)
+                        removed += 1
+                        _LOGGER.info(f"Removed entity {entity.entity_id} (unique_id: {entity.unique_id})")
+                if removed == 0:
+                    _LOGGER.warning(f"No entities found in registry for search {search_id}")
                 
-                if entity_id:
-                    entity_registry.async_remove(entity_id)
-                    _LOGGER.info(f"Removed entity {entity_id} (unique_id: {unique_id})")
-                else:
-                    _LOGGER.warning(f"Entity with unique_id {unique_id} not found in registry")
+                # Stop the coordinator so it no longer polls eBay or fires events
+                await coordinator.async_shutdown()
+                
+                # Delete the coordinator's own state file (.storage/ebay_search_state_<id>)
+                await coordinator.async_delete_state()
                 
                 # Remove from runtime data
                 data["searches"].pop(search_id)
                 
-                # Save to storage
+                # Remove from the master searches store
                 searches = await data["store"].async_load() or {}
                 searches.pop(search_id, None)
                 await data["store"].async_save(searches)
                 
                 _LOGGER.info(f"Deleted search {search_id}")
                 return
-    
+
     async def get_rate_limits(call: ServiceCall) -> None:
         """Get API call tracking information."""
         account = call.data.get(ATTR_ACCOUNT)
