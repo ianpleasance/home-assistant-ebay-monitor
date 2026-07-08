@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 import xml.etree.ElementTree as ET
 
@@ -121,6 +121,8 @@ class EbayAPI:
         self._oauth_token = None
         self._oauth_token_expires = None
         self._oauth_failed = False  # Track if OAuth authentication has failed
+        self._oauth_failed_at = None  # When the failure happened, for cooldown/backoff
+        self._oauth_retry_cooldown = timedelta(minutes=5)  # Retry after this long
         
         # API call tracking
         self._api_calls = {
@@ -295,16 +297,25 @@ class EbayAPI:
         Returns cached token if valid, otherwise requests new one.
         Falls back gracefully if OAuth credentials are invalid.
         """
-        from datetime import timedelta
-        
         # Check if we have a valid cached token
         if (self._oauth_token and self._oauth_token_expires and 
             datetime.now() < self._oauth_token_expires):
             return self._oauth_token
         
-        # If we previously failed to get OAuth token, don't keep trying
-        if hasattr(self, '_oauth_failed') and self._oauth_failed:
-            return None
+        # If we previously failed to get OAuth token, back off for a while
+        # rather than latching permanently - this lets us auto-recover once
+        # the underlying issue (transient network blip, eBay-side hiccup,
+        # rotated credentials that got fixed, etc.) clears up, without
+        # requiring the user to reload the integration.
+        if self._oauth_failed and self._oauth_failed_at:
+            time_since_failure = datetime.now() - self._oauth_failed_at
+            if time_since_failure < self._oauth_retry_cooldown:
+                _LOGGER.debug(
+                    "Skipping OAuth token request, still in cooldown (retry in %d seconds)",
+                    (self._oauth_retry_cooldown - time_since_failure).total_seconds(),
+                )
+                return None
+            _LOGGER.info("OAuth retry cooldown elapsed, attempting token request again")
         
         _LOGGER.debug("Requesting new OAuth token for Browse API")
         
@@ -339,8 +350,9 @@ class EbayAPI:
                         error_text[:500]
                     )
                     
-                    # Mark OAuth as failed so we don't keep retrying
+                    # Mark OAuth as failed, and back off before retrying
                     self._oauth_failed = True
+                    self._oauth_failed_at = datetime.now()
                     
                     if response.status == 401:
                         _LOGGER.warning(
@@ -359,6 +371,10 @@ class EbayAPI:
                 # Set expiry time (subtract 5 minutes for safety)
                 self._oauth_token_expires = datetime.now() + timedelta(seconds=expires_in - 300)
                 
+                # Success - clear any prior failure state so we don't linger in cooldown
+                self._oauth_failed = False
+                self._oauth_failed_at = None
+                
                 _LOGGER.info(
                     "OAuth token obtained successfully, expires in %d seconds",
                     expires_in
@@ -369,6 +385,7 @@ class EbayAPI:
         except Exception as err:
             _LOGGER.error("Error obtaining OAuth token: %s", err)
             self._oauth_failed = True
+            self._oauth_failed_at = datetime.now()
             return None
 
     async def _get_authenticated_username(self) -> str | None:
